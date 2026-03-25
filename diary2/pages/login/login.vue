@@ -72,7 +72,7 @@ export default {
     handleLogin() {
       if (!this.formData.username) {
         uni.showToast({
-          title: '请输入用户名',
+          title: '请输入手机号/用户名',
           icon: 'none'
         })
         return
