@@ -1,14 +1,29 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from datetime import date, datetime
 from models import Diary, DiaryImage, DiaryVideo
 from extensions import db
 
 diary_bp = Blueprint('diary', __name__)
 
+
+def _parse_date_value(value):
+    if value is None:
+        return None
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        # 兼容 "YYYY-MM-DD" 与完整 ISO 时间字符串
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+    raise ValueError("date 字段格式错误")
+
 @diary_bp.route('/list', methods=['GET'])
 @jwt_required()
 def get_diary_list():
-    current_user_id = get_jwt_identity()
+    current_user_id = int(get_jwt_identity())
     
     # 筛选出当前用户的日记
     user_diaries = Diary.query.filter_by(user_id=current_user_id).order_by(Diary.created_at.desc()).all()
@@ -36,7 +51,7 @@ def get_diary_list():
 @diary_bp.route('/detail/<int:diary_id>', methods=['GET'])
 @jwt_required()
 def get_diary_detail(diary_id):
-    current_user_id = get_jwt_identity()
+    current_user_id = int(get_jwt_identity())
     
     # 查找日记
     diary = Diary.query.filter_by(id=diary_id, user_id=current_user_id).first()
@@ -64,8 +79,17 @@ def get_diary_detail(diary_id):
 @diary_bp.route('/create', methods=['POST'])
 @jwt_required()
 def create_diary():
-    current_user_id = get_jwt_identity()
-    data = request.get_json()
+    current_user_id = int(get_jwt_identity())
+    data = request.get_json() or {}
+    required_fields = ["title", "location", "date", "emotion", "content"]
+    missing = [f for f in required_fields if not data.get(f)]
+    if missing:
+        return jsonify({"msg": f"缺少必填字段: {', '.join(missing)}"}), 400
+
+    try:
+        parsed_date = _parse_date_value(data.get("date"))
+    except Exception:
+        return jsonify({"msg": "date 字段格式错误，需为 YYYY-MM-DD 或 ISO 时间"}), 400
     
     # 创建新日记
     new_diary = Diary(
@@ -74,7 +98,7 @@ def create_diary():
         location=data.get('location'),
         latitude=data.get('latitude'),
         longitude=data.get('longitude'),
-        date=data.get('date'),
+        date=parsed_date,
         emotion=data.get('emotion'),
         content=data.get('content')
     )
@@ -109,8 +133,8 @@ def create_diary():
 @diary_bp.route('/update/<int:diary_id>', methods=['PUT'])
 @jwt_required()
 def update_diary(diary_id):
-    current_user_id = get_jwt_identity()
-    data = request.get_json()
+    current_user_id = int(get_jwt_identity())
+    data = request.get_json() or {}
     
     # 查找日记
     diary = Diary.query.filter_by(id=diary_id, user_id=current_user_id).first()
@@ -123,7 +147,11 @@ def update_diary(diary_id):
     diary.location = data.get('location', diary.location)
     diary.latitude = data.get('latitude', diary.latitude)
     diary.longitude = data.get('longitude', diary.longitude)
-    diary.date = data.get('date', diary.date)
+    if 'date' in data:
+        try:
+            diary.date = _parse_date_value(data.get('date'))
+        except Exception:
+            return jsonify({"msg": "date 字段格式错误，需为 YYYY-MM-DD 或 ISO 时间"}), 400
     diary.emotion = data.get('emotion', diary.emotion)
     diary.content = data.get('content', diary.content)
     
@@ -157,7 +185,7 @@ def update_diary(diary_id):
 @diary_bp.route('/delete/<int:diary_id>', methods=['DELETE'])
 @jwt_required()
 def delete_diary(diary_id):
-    current_user_id = get_jwt_identity()
+    current_user_id = int(get_jwt_identity())
     
     # 查找日记
     diary = Diary.query.filter_by(id=diary_id, user_id=current_user_id).first()

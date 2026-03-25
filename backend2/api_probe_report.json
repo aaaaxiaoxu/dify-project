@@ -1,0 +1,288 @@
+{
+  "base_url": "http://127.0.0.1:5000",
+  "generated_at": "2026-03-25T20:53:26.194736",
+  "summary": {
+    "total": 18,
+    "passed": 18,
+    "failed": 0
+  },
+  "results": [
+    {
+      "name": "未登录访问 profile 应被拒绝",
+      "passed": true,
+      "status_code": 401,
+      "expected": "HTTP in [401, 422]",
+      "response": {
+        "msg": "Missing Authorization Header"
+      },
+      "error": null
+    },
+    {
+      "name": "用户注册",
+      "passed": true,
+      "status_code": 201,
+      "expected": "HTTP in [201]",
+      "response": {
+        "msg": "注册成功"
+      },
+      "error": null
+    },
+    {
+      "name": "重复注册应失败",
+      "passed": true,
+      "status_code": 400,
+      "expected": "HTTP in [400]",
+      "response": {
+        "msg": "用户名已存在"
+      },
+      "error": null
+    },
+    {
+      "name": "用户名登录",
+      "passed": true,
+      "status_code": 200,
+      "expected": "HTTP in [200]",
+      "response": {
+        "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTc3NDQ0MzIwNSwianRpIjoiNTlkYjM3MWUtN2ZjNy00ZjQzLWEwMzEtOWI1ZjJjMGU1ZjUyIiwidHlwZSI6ImFjY2VzcyIsInN1YiI6IjMiLCJuYmYiOjE3NzQ0NDMyMDUsImV4cCI6MTc3NDQ0NDEwNX0.snrv939mJq2yaOlfJ9vbNSUPSpbhADme9Xkjluf8tlY",
+        "user": {
+          "id": 3,
+          "nickname": "接口巡检用户",
+          "phone": "13974443205",
+          "username": "api_probe_1774443205"
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "手机号登录",
+      "passed": true,
+      "status_code": 200,
+      "expected": "HTTP in [200]",
+      "response": {
+        "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTc3NDQ0MzIwNSwianRpIjoiYTQ4MjU3ZmEtOWJmZC00Y2MwLTlhZWItZDRhOWRiZjk5ZTJjIiwidHlwZSI6ImFjY2VzcyIsInN1YiI6IjMiLCJuYmYiOjE3NzQ0NDMyMDUsImV4cCI6MTc3NDQ0NDEwNX0.K5uwH4YTU2blpHUddlf6IbSlLXhMQtXXbBLDDdGP0CQ",
+        "user": {
+          "id": 3,
+          "nickname": "接口巡检用户",
+          "phone": "13974443205",
+          "username": "api_probe_1774443205"
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "获取个人资料",
+      "passed": true,
+      "status_code": 200,
+      "expected": "HTTP in [200]",
+      "response": {
+        "id": 3,
+        "nickname": "接口巡检用户",
+        "phone": "13974443205",
+        "username": "api_probe_1774443205"
+      },
+      "error": null
+    },
+    {
+      "name": "创建日记",
+      "passed": true,
+      "status_code": 201,
+      "expected": "HTTP in [201]",
+      "response": {
+        "diary_id": 1,
+        "msg": "创建成功"
+      },
+      "error": null
+    },
+    {
+      "name": "获取日记列表",
+      "passed": true,
+      "status_code": 200,
+      "expected": "HTTP in [200]",
+      "response": [
+        {
+          "content": "今天接口巡检顺利进行，记录一次完整流程。",
+          "created_at": "2026-03-25T20:53:26",
+          "date": "2026-03-25",
+          "emotion": "开心",
+          "id": 1,
+          "images": [
+            "https://example.com/a.jpg"
+          ],
+          "latitude": 30.242865,
+          "location": "杭州西湖",
+          "longitude": 120.149445,
+          "title": "接口巡检日记",
+          "user_id": 3,
+          "videos": [
+            {
+              "thumbnail": "https://example.com/a.png",
+              "url": "https://example.com/a.mp4"
+            }
+          ]
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "获取日记详情",
+      "passed": true,
+      "status_code": 200,
+      "expected": "HTTP in [200]",
+      "response": {
+        "content": "今天接口巡检顺利进行，记录一次完整流程。",
+        "created_at": "2026-03-25T20:53:26",
+        "date": "2026-03-25",
+        "emotion": "开心",
+        "id": 1,
+        "images": [
+          "https://example.com/a.jpg"
+        ],
+        "latitude": 30.242865,
+        "location": "杭州西湖",
+        "longitude": 120.149445,
+        "title": "接口巡检日记",
+        "user_id": 3,
+        "videos": [
+          {
+            "thumbnail": "https://example.com/a.png",
+            "url": "https://example.com/a.mp4"
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "更新日记",
+      "passed": true,
+      "status_code": 200,
+      "expected": "HTTP in [200]",
+      "response": {
+        "msg": "更新成功"
+      },
+      "error": null
+    },
+    {
+      "name": "生成分享链接",
+      "passed": true,
+      "status_code": 200,
+      "expected": "HTTP in [200]",
+      "response": {
+        "msg": "分享链接生成成功",
+        "share_link": "http://localhost:5000/api/share/e7257bf5-7a23-4c4a-b628-a07979e9895d"
+      },
+      "error": null
+    },
+    {
+      "name": "地图轨迹",
+      "passed": true,
+      "status_code": 200,
+      "expected": "HTTP in [200]",
+      "response": [
+        {
+          "date": "2026-03-26",
+          "emotion": "兴奋",
+          "latitude": 31.24,
+          "location": "上海外滩",
+          "longitude": 121.49
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "地图统计",
+      "passed": true,
+      "status_code": 200,
+      "expected": "HTTP in [200]",
+      "response": {
+        "city_count": 1,
+        "km_count": 200,
+        "locations": [
+          "上海外滩"
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "地图详情",
+      "passed": true,
+      "status_code": 200,
+      "expected": "HTTP in [200]",
+      "response": {
+        "history": [
+          {
+            "date": "2026-03-26",
+            "emotion": "兴奋",
+            "latitude": 31.24,
+            "location": "上海外滩",
+            "longitude": 121.49
+          }
+        ],
+        "stats": {
+          "total_cities": 1,
+          "total_days": 1,
+          "total_distance": 200
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "访问分享页",
+      "passed": true,
+      "status_code": 200,
+      "expected": "HTTP in [200]",
+      "response": {
+        "content": "更新后的内容，用于验证 update 接口。",
+        "created_at": "2026-03-25T20:53:26",
+        "date": "2026-03-26",
+        "emotion": "兴奋",
+        "images": [
+          "https://example.com/b.jpg"
+        ],
+        "location": "上海外滩",
+        "title": "接口巡检日记（更新）",
+        "videos": []
+      },
+      "error": null
+    },
+    {
+      "name": "AI 日记分析",
+      "passed": true,
+      "status_code": 200,
+      "expected": "HTTP in [200]",
+      "response": {
+        "emotion_analysis": "这篇日记表达了作者积极向上的情感，整体氛围愉快轻松。",
+        "keywords": [
+          "美食",
+          "散步",
+          "开心",
+          "西湖",
+          "心情"
+        ],
+        "travel_advice": "建议您可以尝试不同类型的旅行体验，丰富旅行经历。 您注重美食体验，建议在旅行中多尝试当地特色美食，这也是了解当地文化的好方式。",
+        "writing_style": "简洁",
+        "writing_suggestion": "您的日记内容较为简洁，可以尝试添加更多细节描述，让内容更加丰富。"
+      },
+      "error": null
+    },
+    {
+      "name": "文件上传",
+      "passed": true,
+      "status_code": 200,
+      "expected": "HTTP in [200]",
+      "response": {
+        "url": "http://localhost:5000/uploads/probe.txt"
+      },
+      "error": null
+    },
+    {
+      "name": "删除日记",
+      "passed": true,
+      "status_code": 200,
+      "expected": "HTTP in [200]",
+      "response": {
+        "msg": "删除成功"
+      },
+      "error": null
+    }
+  ]
+}

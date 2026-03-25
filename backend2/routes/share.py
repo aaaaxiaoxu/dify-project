@@ -11,9 +11,11 @@ shares = []
 @share_bp.route('/generate', methods=['POST'])
 @jwt_required()
 def generate_share():
-    current_user_id = get_jwt_identity()
-    data = request.get_json()
+    current_user_id = int(get_jwt_identity())
+    data = request.get_json() or {}
     diary_id = data.get('diary_id')
+    if not diary_id:
+        return jsonify({"msg": "diary_id 不能为空"}), 400
     
     # 查找日记
     diary = Diary.query.filter_by(id=diary_id, user_id=current_user_id).first()

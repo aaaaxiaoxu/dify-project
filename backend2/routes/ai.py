@@ -4,9 +4,6 @@ import jieba
 import jieba.analyse
 import re
 from collections import Counter
-import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 from extensions import dify_client
 
 ai_bp = Blueprint('ai', __name__)
@@ -281,7 +278,7 @@ def analyze_diary_content(content):
 @ai_bp.route('/analysis', methods=['POST'])
 @jwt_required()
 def ai_analysis():
-    data = request.get_json()
+    data = request.get_json() or {}
     diary_content = data.get('content', '')
     
     # 尝试使用Dify进行分析

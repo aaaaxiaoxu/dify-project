@@ -54,7 +54,7 @@ def login():
         return jsonify({"msg": "用户名或密码错误"}), 401
     
     # 创建访问令牌
-    access_token = create_access_token(identity=user.id)
+    access_token = create_access_token(identity=str(user.id))
     
     return jsonify({
         "access_token": access_token,
@@ -69,7 +69,7 @@ def login():
 @user_bp.route('/profile', methods=['GET'])
 @jwt_required()
 def get_profile():
-    current_user_id = get_jwt_identity()
+    current_user_id = int(get_jwt_identity())
     
     # 查找用户
     user = User.query.get(current_user_id)

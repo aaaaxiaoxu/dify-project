@@ -8,7 +8,7 @@ map_bp = Blueprint('map', __name__)
 @map_bp.route('/trajectory', methods=['GET'])
 @jwt_required()
 def get_trajectory():
-    current_user_id = get_jwt_identity()
+    current_user_id = int(get_jwt_identity())
     
     # 筛选出当前用户的旅行轨迹数据
     user_diaries = Diary.query.filter_by(user_id=current_user_id).all()
@@ -29,7 +29,7 @@ def get_trajectory():
 @map_bp.route('/stats', methods=['GET'])
 @jwt_required()
 def get_map_stats():
-    current_user_id = get_jwt_identity()
+    current_user_id = int(get_jwt_identity())
     
     # 获取当前用户的所有日记
     user_diaries = Diary.query.filter_by(user_id=current_user_id).all()
@@ -54,7 +54,7 @@ def get_map_stats():
 @map_bp.route('/detail', methods=['GET'])
 @jwt_required()
 def get_map_detail():
-    current_user_id = get_jwt_identity()
+    current_user_id = int(get_jwt_identity())
     
     # 获取当前用户的所有日记
     user_diaries = Diary.query.filter_by(user_id=current_user_id).order_by(Diary.date.desc()).all()

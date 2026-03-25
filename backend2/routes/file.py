@@ -18,9 +18,11 @@ def upload_file():
     if file:
         # 保存文件
         filename = file.filename
+        os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
         file_path = os.path.join(Config.UPLOAD_FOLDER, filename)
         file.save(file_path)
         
         # 返回文件URL
         file_url = f"http://localhost:5000/{Config.UPLOAD_FOLDER}/{filename}"
         return jsonify({"url": file_url}), 200
+    return jsonify({"msg": "文件上传失败"}), 400
