@@ -35,7 +35,7 @@ class Diary(db.Model):
     longitude = db.Column(db.DECIMAL(11, 8), nullable=True, comment='经度')
     date = db.Column(db.Date, nullable=False, comment='旅行日期')
     emotion = db.Column(db.String(20), nullable=False, comment='情绪标签')
-    content = db.Column(db.Text, nullable=False, comment='日记内容')
+    content = db.Column(db.Text, nullable=False, comment='日记正文（富文本 HTML）')
     created_at = db.Column(db.DateTime, default=get_current_time, comment='创建时间')
     updated_at = db.Column(db.DateTime, default=get_current_time, onupdate=get_current_time, comment='更新时间')
     

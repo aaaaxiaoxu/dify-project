@@ -50,7 +50,7 @@
             </view>
           </view>
           <text class="diary-location">📍 {{ diary.location }}</text>
-          <text class="diary-excerpt">{{ diary.content.substring(0, 80) }}...</text>
+          <text class="diary-excerpt">{{ contentExcerpt(diary.content) }}</text>
           <view class="diary-footer">
             <text class="diary-date">{{ formatDate(diary.date) }}</text>
             <view class="diary-actions">
@@ -80,6 +80,7 @@
 <script>
 import request from '../../utils/request.js'
 import config from '../../api/config.js'
+import { stripHtml } from '../../utils/html.js'
 
 export default {
   data() {
@@ -104,10 +105,11 @@ export default {
       
       // 搜索过滤
       if (this.searchKeyword) {
-        result = result.filter(diary => 
-          diary.title.includes(this.searchKeyword) || 
-          diary.content.includes(this.searchKeyword)
-        )
+        const kw = this.searchKeyword
+        result = result.filter((diary) => {
+          const plain = stripHtml(diary.content || '')
+          return diary.title.includes(kw) || plain.includes(kw)
+        })
       }
       
       // 情绪过滤
@@ -134,6 +136,13 @@ export default {
   },
   
   methods: {
+    contentExcerpt(html) {
+      const t = stripHtml(html || '')
+      if (!t) return '…'
+      if (t.length <= 80) return t
+      return `${t.substring(0, 80)}…`
+    },
+
     loadDiaryList() {
       // 检查是否有token
       if (!this.token) {

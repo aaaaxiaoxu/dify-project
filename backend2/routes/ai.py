@@ -5,6 +5,7 @@ import jieba.analyse
 import re
 from collections import Counter
 from extensions import dify_client
+from utils.html_sanitize import html_to_plain_text
 
 ai_bp = Blueprint('ai', __name__)
 
@@ -237,7 +238,8 @@ def analyze_diary_content(content):
     """
     综合分析日记内容
     """
-    if not content or len(content.strip()) == 0:
+    plain = html_to_plain_text(content or "")
+    if not plain or not plain.strip():
         return {
             "emotion_analysis": "未提供内容，无法进行情感分析。",
             "keywords": [],
@@ -245,9 +247,9 @@ def analyze_diary_content(content):
             "writing_style": "未知",
             "writing_suggestion": "请提供内容以获取写作风格分析。"
         }
-    
-    # 预处理文本
-    processed_content = preprocess_text(content)
+
+    # 预处理文本（富文本已转为纯文本）
+    processed_content = preprocess_text(plain)
     
     # 1. 情感分析
     main_emotion, emotion_description = analyze_emotion(processed_content)
@@ -265,7 +267,7 @@ def analyze_diary_content(content):
     travel_advice = generate_travel_advice(location_type, activities)
     
     # 6. 写作风格分析
-    writing_style, writing_suggestion = analyze_writing_style(content)
+    writing_style, writing_suggestion = analyze_writing_style(plain)
     
     return {
         "emotion_analysis": emotion_description,
@@ -280,15 +282,18 @@ def analyze_diary_content(content):
 def ai_analysis():
     data = request.get_json() or {}
     diary_content = data.get('content', '')
-    
-    # 尝试使用Dify进行分析
-    dify_result = dify_client.analyze_diary_content(diary_content)
-    
+    plain_for_llm = html_to_plain_text(diary_content)
+
+    # 尝试使用Dify进行分析（传入纯文本，避免 HTML 干扰）
+    dify_result = dify_client.analyze_diary_content(
+        plain_for_llm if plain_for_llm.strip() else diary_content
+    )
+
     if dify_result:
         # 使用Dify分析结果
         analysis_result = dify_result
     else:
-        # Dify不可用时回退到本地分析
+        # Dify不可用时回退到本地分析（内部会再次 strip，兼容纯文本）
         analysis_result = analyze_diary_content(diary_content)
     
     return jsonify(analysis_result), 200

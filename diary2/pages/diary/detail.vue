@@ -41,8 +41,8 @@
         </view>
       </view>
       
-      <view class="content-text">
-        <text>{{ diaryData.content }}</text>
+      <view class="content-rich-wrap">
+        <rich-text class="content-rich" :nodes="diaryData.content"></rich-text>
       </view>
     </view>
     
@@ -344,10 +344,16 @@ export default {
   overflow: hidden;
 }
 
-.content-text {
+.content-rich-wrap {
   font-size: 30rpx;
   line-height: 1.6;
   color: #333;
+  overflow: hidden;
+}
+
+.content-rich {
+  display: block;
+  word-break: break-word;
 }
 
 .ai-analysis {

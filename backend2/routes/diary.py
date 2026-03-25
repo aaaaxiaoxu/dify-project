@@ -3,6 +3,10 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import date, datetime
 from models import Diary, DiaryImage, DiaryVideo
 from extensions import db
+from utils.html_sanitize import (
+    diary_html_is_effectively_empty,
+    sanitize_diary_html,
+)
 
 diary_bp = Blueprint('diary', __name__)
 
@@ -90,8 +94,12 @@ def create_diary():
         parsed_date = _parse_date_value(data.get("date"))
     except Exception:
         return jsonify({"msg": "date 字段格式错误，需为 YYYY-MM-DD 或 ISO 时间"}), 400
-    
-    # 创建新日记
+
+    content_html = sanitize_diary_html(data.get("content"))
+    if diary_html_is_effectively_empty(content_html):
+        return jsonify({"msg": "内容不能为空"}), 400
+
+    # 创建新日记（content 存清洗后的 HTML）
     new_diary = Diary(
         user_id=current_user_id,
         title=data.get('title'),
@@ -100,7 +108,7 @@ def create_diary():
         longitude=data.get('longitude'),
         date=parsed_date,
         emotion=data.get('emotion'),
-        content=data.get('content')
+        content=content_html
     )
     db.session.add(new_diary)
     db.session.commit()
@@ -153,7 +161,11 @@ def update_diary(diary_id):
         except Exception:
             return jsonify({"msg": "date 字段格式错误，需为 YYYY-MM-DD 或 ISO 时间"}), 400
     diary.emotion = data.get('emotion', diary.emotion)
-    diary.content = data.get('content', diary.content)
+    if "content" in data:
+        content_html = sanitize_diary_html(data.get("content"))
+        if diary_html_is_effectively_empty(content_html):
+            return jsonify({"msg": "内容不能为空"}), 400
+        diary.content = content_html
     
     # 更新图片（先删除再重新添加）
     DiaryImage.query.filter_by(diary_id=diary_id).delete()

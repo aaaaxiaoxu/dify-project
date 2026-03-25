@@ -54,12 +54,131 @@
       </view>
     </view>
     
-    <view class="form-group">
-      <textarea 
-        class="content-textarea" 
-        placeholder="记录下这次旅行的美好时光..." 
-        v-model="diaryData.content"
-        maxlength="-1"
+    <view class="form-group editor-card">
+      <text class="label editor-section-title">正文（富文本）</text>
+      <text class="toolbar-tip">以下按钮已全部展示，自动换行；不同端（小程序/App/H5）支持程度可能略有差异。</text>
+      <view class="editor-toolbar">
+        <view class="toolbar-grid">
+          <view
+            :class="['tool-btn', formats.bold ? 'tool-active' : '']"
+            data-cmd="bold"
+            @tap="onFormatCommand"
+          >加粗</view>
+          <view
+            :class="['tool-btn', formats.italic ? 'tool-active' : '']"
+            data-cmd="italic"
+            @tap="onFormatCommand"
+          >斜体</view>
+          <view
+            :class="['tool-btn', formats.underline ? 'tool-active' : '']"
+            data-cmd="underline"
+            @tap="onFormatCommand"
+          >下划</view>
+          <view
+            :class="['tool-btn', formats.strike ? 'tool-active' : '']"
+            data-cmd="strike"
+            @tap="onFormatCommand"
+          >删除线</view>
+          <view
+            :class="['tool-btn', formats.header == 2 ? 'tool-active' : '']"
+            data-cmd="header"
+            data-val="2"
+            @tap="onFormatCommand"
+          >小标题</view>
+          <view
+            :class="['tool-btn', 'tool-color', formats.color === '#e53935' ? 'tool-active' : '']"
+            data-cmd="color"
+            data-val="#e53935"
+            style="color:#e53935"
+            @tap="onFormatCommand"
+          >红</view>
+          <view
+            :class="['tool-btn', 'tool-color', formats.color === '#1e88e5' ? 'tool-active' : '']"
+            data-cmd="color"
+            data-val="#1e88e5"
+            style="color:#1e88e5"
+            @tap="onFormatCommand"
+          >蓝</view>
+          <view
+            :class="['tool-btn', 'tool-color', formats.color === '#43a047' ? 'tool-active' : '']"
+            data-cmd="color"
+            data-val="#43a047"
+            style="color:#43a047"
+            @tap="onFormatCommand"
+          >绿</view>
+          <view
+            :class="['tool-btn', 'tool-color', formats.color === '#fb8c00' ? 'tool-active' : '']"
+            data-cmd="color"
+            data-val="#fb8c00"
+            style="color:#fb8c00"
+            @tap="onFormatCommand"
+          >橙</view>
+          <view
+            :class="['tool-btn', 'tool-color', formats.color === '#333333' ? 'tool-active' : '']"
+            data-cmd="color"
+            data-val="#333333"
+            style="color:#333"
+            @tap="onFormatCommand"
+          >黑</view>
+          <view
+            :class="['tool-btn', formats.backgroundColor == '#fff59d' ? 'tool-active' : '']"
+            data-cmd="backgroundColor"
+            data-val="#fff59d"
+            @tap="onFormatCommand"
+          >高亮</view>
+          <view
+            :class="['tool-btn', formats.list === 'ordered' ? 'tool-active' : '']"
+            data-cmd="list"
+            data-val="ordered"
+            @tap="onFormatCommand"
+          >有序</view>
+          <view
+            :class="['tool-btn', formats.list === 'bullet' ? 'tool-active' : '']"
+            data-cmd="list"
+            data-val="bullet"
+            @tap="onFormatCommand"
+          >无序</view>
+          <view
+            :class="['tool-btn', formats.align === 'left' ? 'tool-active' : '']"
+            data-cmd="align"
+            data-val="left"
+            @tap="onFormatCommand"
+          >左对齐</view>
+          <view
+            :class="['tool-btn', formats.align === 'center' ? 'tool-active' : '']"
+            data-cmd="align"
+            data-val="center"
+            @tap="onFormatCommand"
+          >居中</view>
+          <view
+            :class="['tool-btn', formats.align === 'right' ? 'tool-active' : '']"
+            data-cmd="align"
+            data-val="right"
+            @tap="onFormatCommand"
+          >右对齐</view>
+          <view
+            :class="['tool-btn', formats.align === 'justify' ? 'tool-active' : '']"
+            data-cmd="align"
+            data-val="justify"
+            @tap="onFormatCommand"
+          >两端</view>
+          <view class="tool-btn tool-img" @tap="insertEditorImage">插图</view>
+          <view class="tool-btn" @tap="editorUndo">撤销</view>
+          <view class="tool-btn" @tap="editorRedo">重做</view>
+          <view class="tool-btn" @tap="insertEditorDivider">分割线</view>
+          <view class="tool-btn tool-muted" @tap="removeEditorFormat">清格式</view>
+        </view>
+      </view>
+      <editor
+        id="diary-editor"
+        class="ql-container diary-editor"
+        placeholder="记录下这次旅行的美好时光..."
+        show-img-size
+        show-img-toolbar
+        show-img-resize
+        @ready="onEditorReady"
+        @statuschange="onEditorStatusChange"
+        @input="onEditorInput"
       />
     </view>
     
@@ -137,6 +256,7 @@
 <script>
 import request from '../../utils/request.js'
 import config from '../../api/config.js'
+import { stripHtml } from '../../utils/html.js'
 
 export default {
   data() {
@@ -164,7 +284,10 @@ export default {
         { label: '😔 忧郁', value: '忧郁' },
         { label: '🥺 思念', value: '思念' }
       ],
-      aiSuggestion: ''
+      aiSuggestion: '',
+      formats: {},
+      editorCtx: null,
+      _pendingEditorHtml: null
     }
   },
   
@@ -181,6 +304,147 @@ export default {
   },
   
   methods: {
+    onEditorReady() {
+      const q = uni.createSelectorQuery().in(this)
+      q.select('#diary-editor')
+        .context((res) => {
+          if (!res || !res.context) return
+          this.editorCtx = res.context
+          const pending = this._pendingEditorHtml
+          if (pending !== null && pending !== undefined) {
+            this.editorSetHtml(pending)
+            this._pendingEditorHtml = null
+          }
+        })
+        .exec()
+    },
+
+    onEditorStatusChange(e) {
+      this.formats = (e && e.detail) || {}
+    },
+
+    onEditorInput(e) {
+      const html = e.detail && e.detail.html
+      if (html !== undefined) {
+        this.diaryData.content = html
+      }
+    },
+
+    editorSetHtml(html) {
+      if (!this.editorCtx) return
+      const h = html && String(html).trim() ? html : '<p><br></p>'
+      this.editorCtx.setContents({
+        html: h
+      })
+      this.diaryData.content = h
+    },
+
+    onFormatCommand(e) {
+      if (!this.editorCtx) {
+        uni.showToast({ title: '编辑器未就绪', icon: 'none' })
+        return
+      }
+      const ds = (e.currentTarget && e.currentTarget.dataset) || {}
+      const cmd = ds.cmd
+      const val = ds.val
+      if (!cmd) return
+      if (val !== undefined && val !== '') {
+        if (cmd === 'header') {
+          this.editorCtx.format(cmd, Number(val))
+        } else {
+          this.editorCtx.format(cmd, val)
+        }
+      } else {
+        this.editorCtx.format(cmd)
+      }
+    },
+
+    editorUndo() {
+      if (!this.editorCtx) {
+        uni.showToast({ title: '编辑器未就绪', icon: 'none' })
+        return
+      }
+      this.editorCtx.undo()
+    },
+
+    editorRedo() {
+      if (!this.editorCtx) {
+        uni.showToast({ title: '编辑器未就绪', icon: 'none' })
+        return
+      }
+      this.editorCtx.redo()
+    },
+
+    insertEditorDivider() {
+      if (!this.editorCtx) {
+        uni.showToast({ title: '编辑器未就绪', icon: 'none' })
+        return
+      }
+      this.editorCtx.insertDivider({})
+    },
+
+    removeEditorFormat() {
+      if (!this.editorCtx) {
+        uni.showToast({ title: '编辑器未就绪', icon: 'none' })
+        return
+      }
+      this.editorCtx.removeFormat()
+    },
+
+    uploadEditorImage(filePath) {
+      const token = this.$store && this.$store.state ? this.$store.state.token : ''
+      return new Promise((resolve, reject) => {
+        uni.uploadFile({
+          url: config.FILE_UPLOAD,
+          filePath,
+          name: 'file',
+          header: {
+            Authorization: 'Bearer ' + token
+          },
+          success: (res) => {
+            try {
+              const body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data
+              if (body && body.url) {
+                resolve(body.url)
+              } else {
+                reject(new Error((body && body.msg) || '上传失败'))
+              }
+            } catch (err) {
+              reject(err)
+            }
+          },
+          fail: reject
+        })
+      })
+    },
+
+    insertEditorImage() {
+      if (!this.editorCtx) {
+        uni.showToast({ title: '编辑器未就绪', icon: 'none' })
+        return
+      }
+      uni.chooseImage({
+        count: 1,
+        success: (res) => {
+          const path = res.tempFilePaths && res.tempFilePaths[0]
+          if (!path) return
+          uni.showLoading({ title: '上传中' })
+          this.uploadEditorImage(path)
+            .then((url) => {
+              uni.hideLoading()
+              this.editorCtx.insertImage({
+                src: url,
+                alt: '日记插图'
+              })
+            })
+            .catch(() => {
+              uni.hideLoading()
+              uni.showToast({ title: '图片上传失败', icon: 'none' })
+            })
+        }
+      })
+    },
+
     reverseGeocode(latitude, longitude) {
       const token = this.$store && this.$store.state ? this.$store.state.token : ''
       return request({
@@ -229,12 +493,19 @@ export default {
           location: res.location,
           date: res.date,
           emotion: res.emotion,
-          content: res.content,
+          content: res.content || '',
           images: res.images || [],
           videos: res.videos || [],
           latitude: res.latitude || null,
           longitude: res.longitude || null
         }
+        this.$nextTick(() => {
+          if (this.editorCtx) {
+            this.editorSetHtml(this.diaryData.content)
+          } else {
+            this._pendingEditorHtml = this.diaryData.content
+          }
+        })
       }).catch(err => {
         uni.showToast({
           title: '加载日记失败',
@@ -343,42 +614,57 @@ export default {
     
     getAiSuggestion() {
       this.gettingSuggestion = true
-      // 调用后端AI分析接口
-      request({
-        url: config.AI_ANALYSIS,
-        method: 'POST',
-        data: {
-          content: this.diaryData.content
-        },
-        header: {
-          'Authorization': 'Bearer ' + this.$store.state.token
-        }
-      }).then(res => {
-        this.gettingSuggestion = false
-        // 构建更丰富的AI建议显示内容
-        let suggestionText = res.emotion_analysis || ''
-        
-        if (res.keywords && res.keywords.length > 0) {
-          suggestionText += `\n\n关键词: ${res.keywords.join(', ')}`
-        }
-        
-        if (res.travel_advice) {
-          suggestionText += `\n\n旅行建议: ${res.travel_advice}`
-        }
-        
-        if (res.writing_style) {
-          suggestionText += `\n\n写作风格: ${res.writing_style}`
-        }
-        
-        if (res.writing_suggestion) {
-          suggestionText += `\n\n写作建议: ${res.writing_suggestion}`
-        }
-        
-        this.aiSuggestion = suggestionText || '你可以描述一下当时的感受和周围的环境。'
-      }).catch(err => {
-        this.gettingSuggestion = false
-        this.aiSuggestion = '你可以描述一下当时的感受和周围的环境。'
-      })
+      const send = (content) => {
+        request({
+          url: config.AI_ANALYSIS,
+          method: 'POST',
+          data: {
+            content: content || ''
+          },
+          header: {
+            'Authorization': 'Bearer ' + this.$store.state.token
+          }
+        })
+          .then((res) => {
+            this.gettingSuggestion = false
+            let suggestionText = res.emotion_analysis || ''
+
+            if (res.keywords && res.keywords.length > 0) {
+              suggestionText += `\n\n关键词: ${res.keywords.join(', ')}`
+            }
+
+            if (res.travel_advice) {
+              suggestionText += `\n\n旅行建议: ${res.travel_advice}`
+            }
+
+            if (res.writing_style) {
+              suggestionText += `\n\n写作风格: ${res.writing_style}`
+            }
+
+            if (res.writing_suggestion) {
+              suggestionText += `\n\n写作建议: ${res.writing_suggestion}`
+            }
+
+            this.aiSuggestion =
+              suggestionText || '你可以描述一下当时的感受和周围的环境。'
+          })
+          .catch(() => {
+            this.gettingSuggestion = false
+            this.aiSuggestion = '你可以描述一下当时的感受和周围的环境。'
+          })
+      }
+
+      if (this.editorCtx) {
+        this.editorCtx.getContents({
+          success: (r) => {
+            const html = (r && r.html) || this.diaryData.content || ''
+            send(html)
+          },
+          fail: () => send(this.diaryData.content || '')
+        })
+      } else {
+        send(this.diaryData.content || '')
+      }
     },
     
     saveDiary() {
@@ -414,23 +700,51 @@ export default {
         return
       }
       
-      if (!this.diaryData.content) {
+      if (!this.editorCtx) {
         uni.showToast({
-          title: '请输入内容',
+          title: '编辑器未就绪，请稍候',
           icon: 'none'
         })
         return
       }
-      
+
+      this.editorCtx.getContents({
+        success: (r) => {
+          const html = (r && r.html) || ''
+          const text = ((r && r.text) || '').trim()
+          const hasImg = /<img\s/i.test(html)
+          if (!text && !hasImg) {
+            uni.showToast({
+              title: '请输入正文或插入图片',
+              icon: 'none'
+            })
+            return
+          }
+          this.diaryData.content = html
+          this.submitDiaryRequest()
+        },
+        fail: () => {
+          const fallback = this.diaryData.content || ''
+          if (!stripHtml(fallback) && !/<img\s/i.test(fallback)) {
+            uni.showToast({
+              title: '请输入正文或插入图片',
+              icon: 'none'
+            })
+            return
+          }
+          this.submitDiaryRequest()
+        }
+      })
+    },
+
+    submitDiaryRequest() {
       uni.showLoading({
         title: '保存中...'
       })
-      
-      // 根据是编辑还是创建调用不同的接口
+
       const url = this.isEdit ? config.DIARY_UPDATE.replace('<int:diary_id>', this.diaryId) : config.DIARY_CREATE
       const method = this.isEdit ? 'PUT' : 'POST'
-      
-      // 调用后端保存日记接口
+
       request({
         url: url,
         method: method,
@@ -450,13 +764,12 @@ export default {
         }
       }).then(res => {
         uni.hideLoading()
-        // 检查响应状态码而不是响应内容
         if (res.msg === '创建成功' || res.msg === '更新成功' || res.diary_id) {
           uni.showToast({
             title: this.isEdit ? '更新成功' : '创建成功',
             icon: 'success'
           })
-          
+
           setTimeout(() => {
             uni.navigateBack()
           }, 1500)
@@ -469,19 +782,19 @@ export default {
       }).catch(err => {
         uni.hideLoading()
         console.error('保存日记失败:', err)
-        // 即使出现错误，也检查响应内容
         if (err && err.data && (err.data.msg === '创建成功' || err.data.msg === '更新成功')) {
           uni.showToast({
             title: this.isEdit ? '更新成功' : '创建成功',
             icon: 'success'
           })
-          
+
           setTimeout(() => {
             uni.navigateBack()
           }, 1500)
         } else {
+          const msg = err && err.data && err.data.msg
           uni.showToast({
-            title: '保存失败',
+            title: msg || '保存失败',
             icon: 'none'
           })
         }
@@ -615,16 +928,71 @@ export default {
   box-shadow: 0 4rpx 10rpx rgba(0,122,255,0.3);
 }
 
-.content-textarea {
+.editor-section-title {
+  display: block;
+  margin-bottom: 8rpx;
+}
+
+.toolbar-tip {
+  display: block;
+  font-size: 22rpx;
+  color: #888;
+  line-height: 1.4;
+  margin-bottom: 16rpx;
+}
+
+.editor-toolbar {
   width: 100%;
-  height: 300rpx;
-  padding: 20rpx;
-  font-size: 28rpx;
-  border: none;
-  outline: none;
-  resize: none;
+  margin-bottom: 16rpx;
+}
+
+.toolbar-grid {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  width: 100%;
+}
+
+.tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12rpx 18rpx;
+  margin-right: 12rpx;
+  margin-bottom: 12rpx;
+  font-size: 24rpx;
+  color: #333;
+  background: #f0f4f8;
+  border-radius: 8rpx;
+  box-sizing: border-box;
+}
+
+.tool-btn.tool-muted {
+  background: #e8e8e8;
+  color: #666;
+}
+
+.tool-btn.tool-active {
+  background: #d6e8ff;
+  color: #007aff;
+  font-weight: 600;
+}
+
+.tool-btn.tool-img {
+  background: #e8f4ff;
+  color: #007aff;
+}
+
+.diary-editor {
+  width: 100%;
+  min-height: 360rpx;
+  padding: 16rpx;
+  box-sizing: border-box;
   background: #f8f8f8;
   border-radius: 10rpx;
+  font-size: 28rpx;
+  line-height: 1.6;
 }
 
 .image-section, .video-section {

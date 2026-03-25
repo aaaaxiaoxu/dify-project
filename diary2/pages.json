@@ -86,19 +86,27 @@
     "list": [
       {
         "pagePath": "pages/index/index",
-        "text": "首页 🏠"
+        "text": "首页",
+        "iconPath": "static/tabbar/home.png",
+        "selectedIconPath": "static/tabbar/home-active.png"
       },
       {
         "pagePath": "pages/diary/list",
-        "text": "我的日记 📝"
+        "text": "日记",
+        "iconPath": "static/tabbar/diary.png",
+        "selectedIconPath": "static/tabbar/diary-active.png"
       },
       {
         "pagePath": "pages/map/map",
-        "text": "我的足迹 🗺️"
+        "text": "足迹",
+        "iconPath": "static/tabbar/map.png",
+        "selectedIconPath": "static/tabbar/map-active.png"
       },
       {
         "pagePath": "pages/profile/profile",
-        "text": "我的 👤"
+        "text": "我的",
+        "iconPath": "static/tabbar/mine.png",
+        "selectedIconPath": "static/tabbar/mine-active.png"
       }
     ]
   }
