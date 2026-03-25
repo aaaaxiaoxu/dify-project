@@ -2,6 +2,7 @@ import os
 import sys
 import locale
 from datetime import datetime
+from dotenv import load_dotenv
 
 # 设置默认编码为utf-8
 if sys.version_info[0] == 3:
@@ -19,6 +20,9 @@ import pymysql
 
 # 解决中文编码问题
 pymysql.install_as_MySQLdb()
+
+# 读取 backend2/.env，确保直接 python 启动也生效
+load_dotenv()
 
 def create_app(config_name='default'):
     app = Flask(__name__)
@@ -46,6 +50,10 @@ def create_app(config_name='default'):
     app.register_blueprint(map_bp, url_prefix='/api/map')
     app.register_blueprint(share_bp, url_prefix='/api/share')
     app.register_blueprint(file_bp, url_prefix='/api/file')
+
+    # 启动时自动补建缺失数据表（不会删除已有表和数据）
+    with app.app_context():
+        db.create_all()
     
     return app
 
