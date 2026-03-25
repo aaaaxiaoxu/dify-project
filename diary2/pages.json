@@ -1,0 +1,105 @@
+{
+  "pages": [
+    {
+      "path": "pages/login/login",
+      "style": {
+        "navigationBarTitleText": "用户登录",
+        "navigationBarBackgroundColor": "#007AFF",
+        "navigationBarTextStyle": "white"
+      }
+    },
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "智能旅行日记",
+        "navigationBarBackgroundColor": "#007AFF",
+        "navigationBarTextStyle": "white"
+      }
+    },{
+      "path": "pages/register/register",
+      "style": {
+        "navigationBarTitleText": "用户注册",
+        "navigationBarBackgroundColor": "#007AFF",
+        "navigationBarTextStyle": "white"
+      }
+    },
+    {
+      "path": "pages/diary/list",
+      "style": {
+        "navigationBarTitleText": "我的日记",
+        "navigationBarBackgroundColor": "#007AFF",
+        "navigationBarTextStyle": "white"
+      }
+    },
+    {
+      "path": "pages/diary/edit",
+      "style": {
+        "navigationBarTitleText": "写日记",
+        "navigationBarBackgroundColor": "#007AFF",
+        "navigationBarTextStyle": "white"
+      }
+    },
+    {
+      "path": "pages/diary/detail",
+      "style": {
+        "navigationBarTitleText": "日记详情",
+        "navigationBarBackgroundColor": "#007AFF",
+        "navigationBarTextStyle": "white"
+      }
+    },
+    {
+      "path": "pages/profile/profile",
+      "style": {
+        "navigationBarTitleText": "个人中心",
+        "navigationBarBackgroundColor": "#007AFF",
+        "navigationBarTextStyle": "white"
+      }
+    },
+    {
+      "path": "pages/map/map",
+      "style": {
+        "navigationBarTitleText": "旅行足迹",
+        "navigationBarBackgroundColor": "#007AFF",
+        "navigationBarTextStyle": "white"
+      }
+    },
+    {
+      "path": "pages/profile/disclaimer",
+      "style": {
+        "navigationBarTitleText": "免责声明",
+        "navigationBarBackgroundColor": "#007AFF",
+        "navigationBarTextStyle": "white"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "white",
+    "navigationBarTitleText": "智能旅行日记",
+    "navigationBarBackgroundColor": "#007AFF",
+    "backgroundColor": "#F8F8F8"
+  },
+  "tabBar": {
+    "color": "#7A7E83",
+    "selectedColor": "#007AFF",
+    "borderStyle": "black",
+    "backgroundColor": "#ffffff",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页 🏠"
+      },
+      {
+        "pagePath": "pages/diary/list",
+        "text": "我的日记 📝"
+      },
+      {
+        "pagePath": "pages/map/map",
+        "text": "我的足迹 🗺️"
+      },
+      {
+        "pagePath": "pages/profile/profile",
+        "text": "我的 👤"
+      }
+    ]
+  }
+}

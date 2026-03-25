@@ -1,0 +1,46 @@
+import os
+import pytz
+from datetime import datetime
+
+class Config:
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'travel-diary-secret-key'
+    UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER') or 'uploads'
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'travel-diary-jwt-secret'
+    
+    # 数据库配置 - 请根据您的实际MySQL配置修改用户名、密码和数据库名
+    # 本地
+    # SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'mysql+pymysql://root:diary@python@localhost/travel_diary'
+    # 服务器
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'mysql+pymysql://root:diary%40python@47.110.157.154/travel_diary'
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    
+    # 设置时区为北京时间
+    TIMEZONE = pytz.timezone('Asia/Shanghai')
+    
+    # Dify配置
+    DIFY_API_KEY = os.environ.get('DIFY_API_KEY') or 'your-dify-api-key'
+    DIFY_API_URL = os.environ.get('DIFY_API_URL') or 'https://api.dify.ai/v1'
+    DIFY_WORKFLOW_ID = os.environ.get('DIFY_WORKFLOW_ID') or 'your-workflow-id'
+    
+    # Coze配置
+    COZE_API_KEY = os.environ.get('COZE_API_KEY') or 'your-coze-api-key'
+    COZE_API_URL = os.environ.get('COZE_API_URL') or 'https://api.coze.cn/v1'
+    COZE_BOT_ID = os.environ.get('COZE_BOT_ID') or 'your-bot-id'
+    
+    # 确保上传目录存在
+    @staticmethod
+    def init_app(app):
+        if not os.path.exists(Config.UPLOAD_FOLDER):
+            os.makedirs(Config.UPLOAD_FOLDER)
+
+class DevelopmentConfig(Config):
+    DEBUG = True
+
+class ProductionConfig(Config):
+    DEBUG = False
+
+config = {
+    'development': DevelopmentConfig,
+    'production': ProductionConfig,
+    'default': DevelopmentConfig
+}

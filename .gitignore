@@ -1,0 +1,49 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.venv/
+venv/
+env/
+*.egg-info/
+build/
+dist/
+
+# Flask / local runtime files
+instance/
+*.db
+*.sqlite3
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Node / frontend
+node_modules/
+.pnpm-store/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+coverage/
+.vite/
+
+# uni-app build output
+unpackage/
+
+# IDE
+.idea/
+.vscode/
