@@ -1,7 +1,8 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import Diary, TravelTrajectory
 from extensions import db
+import requests
 
 map_bp = Blueprint('map', __name__)
 
@@ -89,3 +90,55 @@ def get_map_detail():
         })
     
     return jsonify(detail_data), 200
+
+
+@map_bp.route('/reverse_geocode', methods=['POST'])
+@jwt_required()
+def reverse_geocode():
+    data = request.get_json() or {}
+    latitude = data.get("latitude")
+    longitude = data.get("longitude")
+
+    if latitude is None or longitude is None:
+        return jsonify({"msg": "latitude 和 longitude 不能为空"}), 400
+
+    try:
+        lat = float(latitude)
+        lng = float(longitude)
+    except (TypeError, ValueError):
+        return jsonify({"msg": "latitude 或 longitude 格式错误"}), 400
+
+    map_key = current_app.config.get("TENCENT_MAP_KEY")
+    if not map_key:
+        return jsonify({"msg": "未配置腾讯地图 Key"}), 500
+
+    try:
+        resp = requests.get(
+            "https://apis.map.qq.com/ws/geocoder/v1/",
+            params={"location": f"{lat},{lng}", "key": map_key},
+            timeout=8,
+        )
+        if resp.status_code != 200:
+            return jsonify({"msg": "地址解析服务不可用"}), 502
+
+        payload = resp.json()
+        if payload.get("status") != 0:
+            return jsonify({"msg": payload.get("message") or "地址解析失败"}), 502
+
+        result = payload.get("result", {})
+        address = result.get("address", "")
+        ad_info = result.get("address_component", {})
+        province = ad_info.get("province", "")
+        city = ad_info.get("city", "")
+        district = ad_info.get("district", "")
+
+        return jsonify(
+            {
+                "address": address,
+                "province": province,
+                "city": city,
+                "district": district,
+            }
+        ), 200
+    except Exception:
+        return jsonify({"msg": "地址解析请求异常"}), 502

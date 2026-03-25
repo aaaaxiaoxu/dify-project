@@ -5,9 +5,10 @@
 ```
 backend/
 ├── app.py              # 应用工厂
+├── wsgi.py             # Gunicorn 入口
+├── start_gunicorn_dev.sh # Gunicorn 启动脚本
 ├── config.py           # 配置文件
 ├── extensions.py       # 扩展初始化
-├── run.py              # 应用运行入口
 ├── init_db.py          # 数据库初始化脚本
 ├── requirements.txt    # 依赖包
 ├── models.py           # 数据模型
@@ -25,7 +26,7 @@ backend/
 ## 架构说明
 
 ### 分层架构
-1. **应用层** (`app.py`, `run.py`) - 应用工厂和入口点
+1. **应用层** (`app.py`, `wsgi.py`) - 应用工厂和入口点
 2. **配置层** (`config.py`) - 应用配置管理
 3. **扩展层** (`extensions.py`) - Flask扩展初始化
 4. **路由层** (`routes/`) - API路由和业务逻辑处理
@@ -52,9 +53,17 @@ backend/
    python init_db.py
    ```
 
-3. 运行应用:
+3. 启动服务（仅 Gunicorn）:
    ```bash
-   python run.py
+   ./start_gunicorn_dev.sh
+   ```
+   默认监听 `8080`，等价于：
+   ```bash
+   PORT=8080 ./start_gunicorn_dev.sh
+   ```
+   手动启动命令：
+   ```bash
+   python3 -m gunicorn --bind 127.0.0.1:8080 --workers 1 --threads 4 --reload wsgi:app
    ```
 
 ## API接口

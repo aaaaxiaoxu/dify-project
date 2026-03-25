@@ -21,6 +21,7 @@ export default {
   MAP_TRAJECTORY: BASE_URL + '/map/trajectory',
   MAP_STATS: BASE_URL + '/map/stats',
   MAP_DETAIL: BASE_URL + '/map/detail',
+  MAP_REVERSE_GEOCODE: BASE_URL + '/map/reverse_geocode',
   
   // AI分析相关接口
   AI_ANALYSIS: BASE_URL + '/ai/analysis',

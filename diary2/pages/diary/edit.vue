@@ -181,6 +181,40 @@ export default {
   },
   
   methods: {
+    reverseGeocode(latitude, longitude) {
+      const token = this.$store && this.$store.state ? this.$store.state.token : ''
+      return request({
+        url: config.MAP_REVERSE_GEOCODE,
+        method: 'POST',
+        data: { latitude, longitude },
+        header: {
+          'Authorization': 'Bearer ' + token
+        }
+      })
+    },
+
+    parseLocationText(res) {
+      // 不同端返回结构不一致：可能是 address(对象/字符串) 或 addressInfo
+      const addressCandidate = res.addressInfo || res.address
+      if (!addressCandidate) return ''
+
+      // 兼容字符串地址
+      if (typeof addressCandidate === 'string') {
+        return addressCandidate.trim()
+      }
+
+      // 兼容对象地址
+      const address = addressCandidate
+      let locationStr = ''
+      if (address.province) locationStr += address.province
+      if (address.city) locationStr += address.city
+      if (address.district) locationStr += address.district
+      if (address.streetNumber && address.streetNumber.street) locationStr += address.streetNumber.street
+      else if (address.street) locationStr += address.street
+      if (address.poiName) locationStr += address.poiName
+      return locationStr
+    },
+
     loadDiaryData(id) {
       // 调用后端获取日记详情接口
       request({
@@ -231,23 +265,22 @@ export default {
           // 保存经纬度到数据中
           this.diaryData.latitude = res.latitude
           this.diaryData.longitude = res.longitude
-          
-          // 如果有地址信息，则使用详细地址作为地点名称
-          if (res.address) {
-            // 优先使用中文地址
-            const address = res.address
-            let locationStr = ''
-            
-            // 按重要性拼接地址
-            if (address.province) locationStr += address.province
-            if (address.city) locationStr += address.city
-            if (address.district) locationStr += address.district
-            if (address.poiName) locationStr += address.poiName
-            else if (address.street) locationStr += address.street
-            
-            this.diaryData.location = locationStr || '未知位置'
+
+          const parsedLocation = this.parseLocationText(res)
+          if (parsedLocation) {
+            this.diaryData.location = parsedLocation
+          } else if (typeof res.latitude === 'number' && typeof res.longitude === 'number') {
+            // 先尝试后端反查中文地址，失败再回退到经纬度文本
+            this.reverseGeocode(res.latitude, res.longitude).then(geoRes => {
+              if (geoRes && geoRes.address) {
+                this.diaryData.location = geoRes.address
+              } else {
+                this.diaryData.location = `${res.latitude.toFixed(6)}, ${res.longitude.toFixed(6)}`
+              }
+            }).catch(() => {
+              this.diaryData.location = `${res.latitude.toFixed(6)}, ${res.longitude.toFixed(6)}`
+            })
           } else {
-            // 如果没有地址信息，使用默认位置，但仍然保存经纬度
             this.diaryData.location = '未知位置'
           }
           

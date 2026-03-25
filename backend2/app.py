@@ -59,11 +59,3 @@ def create_app(config_name='default'):
         db.create_all()
     
     return app
-
-if __name__ == '__main__':
-    # 设置环境变量解决编码问题
-    os.environ['PYTHONIOENCODING'] = 'utf-8'
-    
-    app = create_app()
-    # 使用localhost而不是0.0.0.0来避免DNS解析问题
-    app.run(debug=True, host='localhost', port=5000)
