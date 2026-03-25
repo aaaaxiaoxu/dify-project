@@ -20,7 +20,6 @@ class Config:
     # Dify配置
     DIFY_API_KEY = os.environ.get('DIFY_API_KEY') or 'your-dify-api-key'
     DIFY_API_URL = os.environ.get('DIFY_API_URL') or 'https://api.dify.ai/v1'
-    DIFY_WORKFLOW_ID = os.environ.get('DIFY_WORKFLOW_ID') or 'your-workflow-id'
     
     # Coze配置
     COZE_API_KEY = os.environ.get('COZE_API_KEY') or 'your-coze-api-key'

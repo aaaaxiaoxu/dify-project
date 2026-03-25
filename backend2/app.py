@@ -14,15 +14,17 @@ if sys.version_info[0] == 3:
 from flask import Flask
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
-from extensions import db, jwt, dify_client
-from config import config
 import pymysql
 
 # 解决中文编码问题
 pymysql.install_as_MySQLdb()
 
-# 读取 backend2/.env，确保直接 python 启动也生效
-load_dotenv()
+# 显式读取 backend2/.env，避免不同启动目录导致变量加载失败
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+
+from extensions import db, jwt, dify_client
+from config import config
 
 def create_app(config_name='default'):
     app = Flask(__name__)

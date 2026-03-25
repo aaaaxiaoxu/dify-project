@@ -1,27 +1,23 @@
 import requests
-import json
-from flask import current_app
 
 class DifyClient:
     def __init__(self):
         self.api_key = None
         self.api_url = None
-        self.workflow_id = None
         
     def init_app(self, app):
         self.api_key = app.config.get('DIFY_API_KEY')
         self.api_url = app.config.get('DIFY_API_URL')
-        self.workflow_id = app.config.get('DIFY_WORKFLOW_ID')
         
     def analyze_diary_content(self, content):
         """
         使用Dify工作流分析日记内容
         """
-        if not self.api_key or not self.api_url or not self.workflow_id:
+        if not self.api_key or not self.api_url:
             return None
             
-        # Dify工作流API端点
-        url = f"{self.api_url}/workflows/{self.workflow_id}/run"
+        # 新版Dify工作流接口：工作流由API Key绑定，无需workflow_id
+        url = f"{self.api_url.rstrip('/')}/workflows/run"
         
         # 请求头
         headers = {
@@ -30,9 +26,14 @@ class DifyClient:
         }
         
         # 请求数据
+        # 兼容不同工作流变量命名：
+        # - 文本：diary_text / diary_content
+        # - 文件：video_file 需为文件列表（无文件时传空数组）
         data = {
             'inputs': {
-                'diary_content': content
+                'diary_text': content,
+                'diary_content': content,
+                'video_file': []
             },
             'response_mode': 'blocking',
             'user': 'travel_diary_user'
