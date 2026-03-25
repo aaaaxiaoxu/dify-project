@@ -15,14 +15,26 @@
     <view class="form-group">
       <view class="location-section">
         <input 
-          class="form-input" 
-          placeholder="请输入地点" 
+          class="form-input location-input" 
+          placeholder="请输入地点，如：北京天安门" 
           v-model="diaryData.location"
+          @input="onLocationTextInput"
         />
-        <button class="location-btn" @click="getCurrentLocation">
-          <text v-if="!gettingLocation">获取当前位置</text>
-          <text v-else>定位中...</text>
-        </button>
+        <view class="location-btns">
+          <button class="location-btn location-btn-secondary" @click="geocodeAddress" :disabled="geocodingAddress">
+            <text v-if="!geocodingAddress">解析为经纬度</text>
+            <text v-else>解析中...</text>
+          </button>
+          <button class="location-btn" @click="getCurrentLocation" :disabled="gettingLocation">
+            <text v-if="!gettingLocation">获取当前位置</text>
+            <text v-else>定位中...</text>
+          </button>
+        </view>
+      </view>
+      <view class="coord-hint">
+        <text :class="coordsReady ? 'coord-ok' : 'coord-warn'">
+          {{ coordsReady ? '已具备经纬度，可以保存' : '保存前须完成：点「解析为经纬度」或「获取当前位置」' }}
+        </text>
       </view>
     </view>
     
@@ -263,6 +275,7 @@ export default {
     return {
       isEdit: false,
       gettingLocation: false,
+      geocodingAddress: false,
       gettingSuggestion: false,
       diaryId: null,
       diaryData: {
@@ -287,7 +300,24 @@ export default {
       aiSuggestion: '',
       formats: {},
       editorCtx: null,
-      _pendingEditorHtml: null
+      _pendingEditorHtml: null,
+      /** 由定位/加载回填地点时避免 @input 误清空经纬度 */
+      _suppressLocationCoordClear: false
+    }
+  },
+
+  computed: {
+    coordsReady() {
+      const lat = Number(this.diaryData.latitude)
+      const lng = Number(this.diaryData.longitude)
+      return (
+        Number.isFinite(lat) &&
+        Number.isFinite(lng) &&
+        lat >= -90 &&
+        lat <= 90 &&
+        lng >= -180 &&
+        lng <= 180
+      )
     }
   },
   
@@ -457,6 +487,49 @@ export default {
       })
     },
 
+    onLocationTextInput() {
+      if (this._suppressLocationCoordClear) return
+      this.diaryData.latitude = null
+      this.diaryData.longitude = null
+    },
+
+    geocodeAddress() {
+      const addr = (this.diaryData.location || '').trim()
+      if (!addr) {
+        uni.showToast({ title: '请先输入地点', icon: 'none' })
+        return
+      }
+      const token = this.$store && this.$store.state ? this.$store.state.token : ''
+      if (!token) {
+        uni.showToast({ title: '请先登录', icon: 'none' })
+        return
+      }
+      this.geocodingAddress = true
+      request({
+        url: config.MAP_GEOCODE,
+        method: 'POST',
+        data: { address: addr },
+        header: {
+          Authorization: 'Bearer ' + token
+        }
+      })
+        .then((res) => {
+          this.geocodingAddress = false
+          if (res.latitude != null && res.longitude != null) {
+            this.diaryData.latitude = res.latitude
+            this.diaryData.longitude = res.longitude
+            uni.showToast({ title: '已解析，可保存日记', icon: 'success' })
+          } else {
+            uni.showToast({ title: '未能解析该地点', icon: 'none' })
+          }
+        })
+        .catch((err) => {
+          this.geocodingAddress = false
+          const msg = err && err.data && err.data.msg
+          uni.showToast({ title: msg || '解析失败，请检查地图 Key 或网络', icon: 'none' })
+        })
+    },
+
     parseLocationText(res) {
       // 不同端返回结构不一致：可能是 address(对象/字符串) 或 addressInfo
       const addressCandidate = res.addressInfo || res.address
@@ -536,23 +609,36 @@ export default {
           // 保存经纬度到数据中
           this.diaryData.latitude = res.latitude
           this.diaryData.longitude = res.longitude
+          this._suppressLocationCoordClear = true
+
+          const releaseSuppress = () => {
+            this.$nextTick(() => {
+              this._suppressLocationCoordClear = false
+            })
+          }
 
           const parsedLocation = this.parseLocationText(res)
           if (parsedLocation) {
             this.diaryData.location = parsedLocation
+            releaseSuppress()
           } else if (typeof res.latitude === 'number' && typeof res.longitude === 'number') {
             // 先尝试后端反查中文地址，失败再回退到经纬度文本
-            this.reverseGeocode(res.latitude, res.longitude).then(geoRes => {
-              if (geoRes && geoRes.address) {
-                this.diaryData.location = geoRes.address
-              } else {
+            this.reverseGeocode(res.latitude, res.longitude)
+              .then((geoRes) => {
+                if (geoRes && geoRes.address) {
+                  this.diaryData.location = geoRes.address
+                } else {
+                  this.diaryData.location = `${res.latitude.toFixed(6)}, ${res.longitude.toFixed(6)}`
+                }
+                releaseSuppress()
+              })
+              .catch(() => {
                 this.diaryData.location = `${res.latitude.toFixed(6)}, ${res.longitude.toFixed(6)}`
-              }
-            }).catch(() => {
-              this.diaryData.location = `${res.latitude.toFixed(6)}, ${res.longitude.toFixed(6)}`
-            })
+                releaseSuppress()
+              })
           } else {
             this.diaryData.location = '未知位置'
+            releaseSuppress()
           }
           
           uni.showToast({
@@ -565,9 +651,13 @@ export default {
           this.gettingLocation = false
           
           // 定位失败时使用模拟数据
-          this.diaryData.location = '杭州市西湖区'
+          this._suppressLocationCoordClear = true
           this.diaryData.latitude = 30.242289
           this.diaryData.longitude = 120.143669
+          this.diaryData.location = '杭州市西湖区'
+          this.$nextTick(() => {
+            this._suppressLocationCoordClear = false
+          })
           
           uni.showToast({
             title: '定位失败，使用默认位置',
@@ -683,6 +773,14 @@ export default {
         })
         return
       }
+
+      if (!this.coordsReady) {
+        uni.showToast({
+          title: '请先点「解析为经纬度」或「获取当前位置」',
+          icon: 'none'
+        })
+        return
+      }
       
       if (!this.diaryData.date) {
         uni.showToast({
@@ -745,60 +843,65 @@ export default {
       const url = this.isEdit ? config.DIARY_UPDATE.replace('<int:diary_id>', this.diaryId) : config.DIARY_CREATE
       const method = this.isEdit ? 'PUT' : 'POST'
 
-      request({
-        url: url,
-        method: method,
-        data: {
-          title: this.diaryData.title,
-          location: this.diaryData.location,
-          date: this.diaryData.date,
-          emotion: this.diaryData.emotion,
-          content: this.diaryData.content,
-          images: this.diaryData.images,
-          videos: this.diaryData.videos,
-          latitude: this.diaryData.latitude,
-          longitude: this.diaryData.longitude
-        },
-        header: {
-          'Authorization': 'Bearer ' + this.$store.state.token
-        }
-      }).then(res => {
-        uni.hideLoading()
-        if (res.msg === '创建成功' || res.msg === '更新成功' || res.diary_id) {
-          uni.showToast({
-            title: this.isEdit ? '更新成功' : '创建成功',
-            icon: 'success'
-          })
+      const runSave = () =>
+        request({
+          url: url,
+          method: method,
+          data: {
+            title: this.diaryData.title,
+            location: this.diaryData.location,
+            date: this.diaryData.date,
+            emotion: this.diaryData.emotion,
+            content: this.diaryData.content,
+            images: this.diaryData.images,
+            videos: this.diaryData.videos,
+            latitude: this.diaryData.latitude,
+            longitude: this.diaryData.longitude
+          },
+          header: {
+            'Authorization': 'Bearer ' + this.$store.state.token
+          }
+        })
 
-          setTimeout(() => {
-            uni.navigateBack()
-          }, 1500)
-        } else {
-          uni.showToast({
-            title: res.msg || '保存失败',
-            icon: 'none'
-          })
-        }
-      }).catch(err => {
-        uni.hideLoading()
-        console.error('保存日记失败:', err)
-        if (err && err.data && (err.data.msg === '创建成功' || err.data.msg === '更新成功')) {
-          uni.showToast({
-            title: this.isEdit ? '更新成功' : '创建成功',
-            icon: 'success'
-          })
+      runSave()
+        .then((res) => {
+          uni.hideLoading()
+          if (res.msg === '创建成功' || res.msg === '更新成功' || res.diary_id) {
+            uni.showToast({
+              title: this.isEdit ? '更新成功' : '创建成功',
+              icon: 'success'
+            })
 
-          setTimeout(() => {
-            uni.navigateBack()
-          }, 1500)
-        } else {
-          const msg = err && err.data && err.data.msg
-          uni.showToast({
-            title: msg || '保存失败',
-            icon: 'none'
-          })
-        }
-      })
+            setTimeout(() => {
+              uni.navigateBack()
+            }, 1500)
+          } else {
+            uni.showToast({
+              title: res.msg || '保存失败',
+              icon: 'none'
+            })
+          }
+        })
+        .catch((err) => {
+          uni.hideLoading()
+          console.error('保存日记失败:', err)
+          if (err && err.data && (err.data.msg === '创建成功' || err.data.msg === '更新成功')) {
+            uni.showToast({
+              title: this.isEdit ? '更新成功' : '创建成功',
+              icon: 'success'
+            })
+
+            setTimeout(() => {
+              uni.navigateBack()
+            }, 1500)
+          } else {
+            const msg = err && err.data && err.data.msg
+            uni.showToast({
+              title: msg || '保存失败',
+              icon: 'none'
+            })
+          }
+        })
     },
     
     cancelEdit() {
@@ -857,12 +960,25 @@ export default {
 
 .location-section {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 16rpx;
+}
+
+.location-input {
+  flex: 1;
+  min-width: 200rpx;
+}
+
+.location-btns {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 12rpx;
 }
 
 .location-btn {
   flex-shrink: 0;
-  margin-left: 20rpx;
   padding: 15rpx 20rpx;
   background: linear-gradient(135deg, #007AFF 0%, #00d4ff 100%);
   color: white;
@@ -873,9 +989,29 @@ export default {
   transition: all 0.3s ease;
 }
 
+.location-btn-secondary {
+  background: linear-gradient(135deg, #5a67d8 0%, #7c3aed 100%);
+  box-shadow: 0 4rpx 10rpx rgba(90,103,216,0.35);
+}
+
 .location-btn:hover {
   transform: translateY(-2rpx);
   box-shadow: 0 6rpx 15rpx rgba(0,122,255,0.4);
+}
+
+.coord-hint {
+  margin-top: 16rpx;
+  padding: 0 8rpx;
+}
+
+.coord-ok {
+  font-size: 24rpx;
+  color: #2e7d32;
+}
+
+.coord-warn {
+  font-size: 24rpx;
+  color: #c62828;
 }
 
 .date-section {

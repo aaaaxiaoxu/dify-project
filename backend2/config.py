@@ -20,11 +20,6 @@ class Config:
     # Dify配置
     DIFY_API_KEY = os.environ.get('DIFY_API_KEY') or 'your-dify-api-key'
     DIFY_API_URL = os.environ.get('DIFY_API_URL') or 'https://api.dify.ai/v1'
-    
-    # Coze配置
-    COZE_API_KEY = os.environ.get('COZE_API_KEY') or 'your-coze-api-key'
-    COZE_API_URL = os.environ.get('COZE_API_URL') or 'https://api.coze.cn/v1'
-    COZE_BOT_ID = os.environ.get('COZE_BOT_ID') or 'your-bot-id'
 
     # 腾讯地图 WebService Key（用于经纬度反查地址）
     TENCENT_MAP_KEY = os.environ.get('TENCENT_MAP_KEY') or 'HTJBZ-PMGKN-2E5FT-SH6DO-ZEQYV-BSBWH'

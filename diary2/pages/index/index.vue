@@ -126,9 +126,8 @@ export default {
       const token = this.$store.state.token
       if (!token) {
         console.log('用户未登录')
-        // 使用默认值
-        this.cityCount = 8
-        this.kmCount = 2450
+        this.cityCount = 0
+        this.kmCount = 0
         return
       }
       
@@ -144,9 +143,8 @@ export default {
         this.kmCount = res.km_count
       }).catch(err => {
         console.error('获取地图统计数据失败:', err)
-        // 出错时使用默认值
-        this.cityCount = 8
-        this.kmCount = 2450
+        this.cityCount = 0
+        this.kmCount = 0
       })
     },
     

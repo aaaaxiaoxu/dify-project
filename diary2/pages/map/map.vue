@@ -95,6 +95,63 @@ export default {
   },
   
   methods: {
+    haversineKm(lat1, lon1, lat2, lon2) {
+      const R = 6371
+      const toRad = (d) => (d * Math.PI) / 180
+      const dLat = toRad(lat2 - lat1)
+      const dLon = toRad(lon2 - lon1)
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)))
+      return R * c
+    },
+
+    /** 与后端逻辑一致：不同地点数、有坐标时按时间序累加球面距离、不同日期数 */
+    computeFootprintFromRecords(records) {
+      if (!records || !records.length) {
+        return { cities: 0, distanceKm: 0, days: 0 }
+      }
+      const locs = new Set()
+      const dayKeys = new Set()
+      for (const r of records) {
+        if (r.location && String(r.location).trim()) {
+          locs.add(String(r.location).trim())
+        }
+        if (r.date) {
+          const d = new Date(r.date)
+          if (Number.isFinite(d.getTime())) {
+            const y = d.getFullYear()
+            const m = String(d.getMonth() + 1).padStart(2, '0')
+            const day = String(d.getDate()).padStart(2, '0')
+            dayKeys.add(`${y}-${m}-${day}`)
+          }
+        }
+      }
+      const withCoord = [...records]
+        .filter((r) => r.longitude && r.latitude)
+        .sort((a, b) => {
+          const ta = new Date(a.date).getTime()
+          const tb = new Date(b.date).getTime()
+          if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb
+          return 0
+        })
+      let dist = 0
+      for (let i = 1; i < withCoord.length; i++) {
+        dist += this.haversineKm(
+          withCoord[i - 1].latitude,
+          withCoord[i - 1].longitude,
+          withCoord[i].latitude,
+          withCoord[i].longitude
+        )
+      }
+      return {
+        cities: locs.size,
+        distanceKm: Math.round(dist * 10) / 10,
+        days: dayKeys.size
+      }
+    },
+
     loadMapData() {
       // 调用后端获取详细地图数据接口
       const token = this.$store && this.$store.state ? this.$store.state.token : ''
@@ -175,10 +232,11 @@ export default {
         }
       ]
       
-      this.travelStats.totalCities = 12
-      this.travelStats.totalDistance = 2450
-      this.travelStats.totalDays = 45
-      
+      const local = this.computeFootprintFromRecords(this.travelHistory)
+      this.travelStats.totalCities = local.cities
+      this.travelStats.totalDistance = local.distanceKm
+      this.travelStats.totalDays = local.days
+
       // 设置地图标记点
       this.setMapMarkers()
     },
@@ -242,15 +300,21 @@ export default {
         }
       })
       
-      // 创建轨迹线
-      const points = this.travelHistory
+      // 轨迹按日期升序连线（列表仍可为新到旧，避免路线与时间倒流）
+      const sortedForPath = [...this.travelHistory]
         .filter(record => record.longitude && record.latitude)
-        .map(record => {
-          return {
-            longitude: record.longitude,
-            latitude: record.latitude
-          }
+        .sort((a, b) => {
+          const ta = new Date(a.date).getTime()
+          const tb = new Date(b.date).getTime()
+          const na = Number.isFinite(ta)
+          const nb = Number.isFinite(tb)
+          if (na && nb && ta !== tb) return ta - tb
+          return 0
         })
+      const points = sortedForPath.map(record => ({
+        longitude: record.longitude,
+        latitude: record.latitude
+      }))
       
       if (points.length > 1) {
         this.mapPolyline = [{
@@ -314,7 +378,12 @@ export default {
       // 根据跨度计算合适的缩放级别，确保显示所有点
       const latSpan = maxLat - minLat;
       const lngSpan = maxLng - minLng;
-      
+
+      if (latSpan === 0 && lngSpan === 0) {
+        this.mapScale = 14;
+        return;
+      }
+
       // 增加更大的边距以确保所有标记都能完整显示
       const latMargin = latSpan * 1.2; // 增加边距到1.2倍
       const lngMargin = lngSpan * 1.2; // 增加边距到1.2倍

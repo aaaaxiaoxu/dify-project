@@ -11,6 +11,20 @@ from utils.html_sanitize import (
 diary_bp = Blueprint('diary', __name__)
 
 
+def _parse_client_coords(lat_raw, lng_raw):
+    """客户端提交的经纬度（须先通过「解析为经纬度」或定位获得）。"""
+    if lat_raw is None or lng_raw is None:
+        return None
+    try:
+        la = float(lat_raw)
+        lo = float(lng_raw)
+    except (TypeError, ValueError):
+        return None
+    if not (-90 <= la <= 90 and -180 <= lo <= 180):
+        return None
+    return la, lo
+
+
 def _parse_date_value(value):
     if value is None:
         return None
@@ -99,13 +113,22 @@ def create_diary():
     if diary_html_is_effectively_empty(content_html):
         return jsonify({"msg": "内容不能为空"}), 400
 
-    # 创建新日记（content 存清洗后的 HTML）
+    parsed = _parse_client_coords(data.get("latitude"), data.get("longitude"))
+    if not parsed:
+        return jsonify(
+            {
+                "msg": "请先在前端点击「解析为经纬度」或使用「获取当前位置」，再保存日记",
+            }
+        ), 400
+    la, lo = parsed
+
+    # 创建新日记（经纬度仅接受客户端解析/定位结果，避免在保存接口内再调地图导致 macOS 下 worker 不稳定）
     new_diary = Diary(
         user_id=current_user_id,
         title=data.get('title'),
         location=data.get('location'),
-        latitude=data.get('latitude'),
-        longitude=data.get('longitude'),
+        latitude=la,
+        longitude=lo,
         date=parsed_date,
         emotion=data.get('emotion'),
         content=content_html
@@ -152,9 +175,15 @@ def update_diary(diary_id):
     
     # 更新日记
     diary.title = data.get('title', diary.title)
-    diary.location = data.get('location', diary.location)
-    diary.latitude = data.get('latitude', diary.latitude)
-    diary.longitude = data.get('longitude', diary.longitude)
+    diary.location = data.get("location", diary.location)
+    parsed = _parse_client_coords(data.get("latitude"), data.get("longitude"))
+    if not parsed:
+        return jsonify(
+            {
+                "msg": "请先在前端点击「解析为经纬度」或使用「获取当前位置」，再保存日记",
+            }
+        ), 400
+    diary.latitude, diary.longitude = parsed
     if 'date' in data:
         try:
             diary.date = _parse_date_value(data.get('date'))

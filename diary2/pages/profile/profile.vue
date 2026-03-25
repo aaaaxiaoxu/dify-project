@@ -116,7 +116,8 @@ export default {
           'Authorization': 'Bearer ' + token
         }
       }).then(res => {
-        this.userStats.diaryCount = res.locations.length
+        this.userStats.diaryCount =
+          res.diary_count != null ? res.diary_count : 0
         this.userStats.cityCount = res.city_count
         this.userStats.kmCount = res.km_count
       }).catch(err => {

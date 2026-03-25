@@ -1,8 +1,14 @@
 from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from models import Diary, TravelTrajectory
-from extensions import db
+from models import Diary
+from geo_utils import (
+    route_distance_km_from_diaries,
+    unique_location_strings,
+    unique_travel_day_count,
+)
 import requests
+
+from tencent_geocode import forward_geocode_address
 
 map_bp = Blueprint('map', __name__)
 
@@ -11,8 +17,12 @@ map_bp = Blueprint('map', __name__)
 def get_trajectory():
     current_user_id = int(get_jwt_identity())
     
-    # 筛选出当前用户的旅行轨迹数据
-    user_diaries = Diary.query.filter_by(user_id=current_user_id).all()
+    # 按时间正序，便于前端直接连线成「旅程」
+    user_diaries = (
+        Diary.query.filter_by(user_id=current_user_id)
+        .order_by(Diary.date.asc(), Diary.id.asc())
+        .all()
+    )
     
     # 提取轨迹信息
     trajectory_data = []
@@ -32,22 +42,17 @@ def get_trajectory():
 def get_map_stats():
     current_user_id = int(get_jwt_identity())
     
-    # 获取当前用户的所有日记
     user_diaries = Diary.query.filter_by(user_id=current_user_id).all()
-    
-    # 统计城市数量（根据地点去重）
-    locations = [diary.location for diary in user_diaries]
-    unique_locations = list(set(locations))
+
+    unique_locations = unique_location_strings(user_diaries)
     city_count = len(unique_locations)
-    
-    # 简单模拟公里数（实际应该根据地理位置计算）
-    # 这里我们假设每次旅行平均距离为200公里
-    km_count = len(user_diaries) * 200
-    
+    km_count = route_distance_km_from_diaries(user_diaries)
+
     stats_data = {
+        "diary_count": len(user_diaries),
         "city_count": city_count,
         "km_count": km_count,
-        "locations": unique_locations
+        "locations": unique_locations,
     }
     
     return jsonify(stats_data), 200
@@ -66,17 +71,16 @@ def get_map_detail():
         "history": []
     }
     
-    # 统计数据
-    locations = [diary.location for diary in user_diaries]
-    unique_locations = list(set(locations))
+    unique_locations = unique_location_strings(user_diaries)
     city_count = len(unique_locations)
-    km_count = len(user_diaries) * 200  # 简单模拟公里数
-    total_days = len(user_diaries)
-    
+    km_count = route_distance_km_from_diaries(user_diaries)
+    total_days = unique_travel_day_count(user_diaries)
+
     detail_data["stats"] = {
         "total_cities": city_count,
         "total_distance": km_count,
-        "total_days": total_days
+        "total_days": total_days,
+        "diary_count": len(user_diaries),
     }
     
     # 历史记录
@@ -142,3 +146,30 @@ def reverse_geocode():
         ), 200
     except Exception:
         return jsonify({"msg": "地址解析请求异常"}), 502
+
+
+@map_bp.route("/geocode", methods=["POST"])
+@jwt_required()
+def geocode_address():
+    """正向地理编码：文本地址 → 经纬度（与写日记入库逻辑共用）。"""
+    data = request.get_json() or {}
+    address = (data.get("address") or "").strip()
+    if not address:
+        return jsonify({"msg": "address 不能为空"}), 400
+
+    map_key = current_app.config.get("TENCENT_MAP_KEY")
+    if not map_key:
+        return jsonify({"msg": "未配置腾讯地图 Key"}), 500
+
+    region = (data.get("region") or "").strip() or None
+    res = forward_geocode_address(address, map_key, region=region)
+    if not res:
+        return jsonify({"msg": "未找到该地址对应的坐标或服务异常"}), 400
+
+    return jsonify(
+        {
+            "latitude": res["latitude"],
+            "longitude": res["longitude"],
+            "address": res.get("formatted"),
+        }
+    ), 200
