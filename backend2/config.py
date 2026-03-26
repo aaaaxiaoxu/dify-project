@@ -1,11 +1,12 @@
 import os
 import pytz
-from datetime import datetime
+from datetime import datetime, timedelta
 
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'travel-diary-secret-key'
     UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER') or 'uploads'
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'travel-diary-jwt-secret'
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(days=1)  # 访问令牌1天过期
     COS_SECRET_ID = os.environ.get('COS_SECRET_ID') or None
     COS_SECRET_KEY = os.environ.get('COS_SECRET_KEY') or None
     COS_REGION = os.environ.get('COS_REGION') or 'ap-guangzhou'
