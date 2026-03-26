@@ -242,51 +242,81 @@ export default {
     },
     
     setMapMarkers() {
-      // 创建地图标记点
+      // ---- 1. 先按日期升序排列，计算每条记录的时间序号 ----
+      const sortedForPath = [...this.travelHistory]
+        .filter(record => record.longitude && record.latitude)
+        .sort((a, b) => {
+          const ta = new Date(a.date).getTime()
+          const tb = new Date(b.date).getTime()
+          const na = Number.isFinite(ta)
+          const nb = Number.isFinite(tb)
+          if (na && !nb) return -1
+          if (!na && nb) return 1
+          if (na && nb && ta !== tb) return ta - tb
+          return 0
+        })
+
+      // 记录对象 → 时间序号（1-based）
+      const chronoOrder = new Map()
+      sortedForPath.forEach((record, idx) => {
+        chronoOrder.set(record, idx + 1)
+      })
+      const totalStops = sortedForPath.length
+
+      // ---- 2. 创建地图标记点，callout 中带序号 ----
       this.mapMarkers = this.travelHistory.map((record, index) => {
-        // 根据情绪选择不同颜色的标记点
-        let color = '#007AFF'; // 默认蓝色
-        let iconPath = '/static/custom-icons/location-pin.svg'; // 默认图标
-        
+        let color = '#007AFF'
+        let iconPath = '/static/custom-icons/location-pin.svg'
+
         switch(record.emotion) {
           case '开心':
-            color = '#FFD700'; // 金色
-            iconPath = '/static/custom-icons/location-pin-happy.svg';
-            break;
+            color = '#FFD700'
+            iconPath = '/static/custom-icons/location-pin-happy.svg'
+            break
           case '感动':
-            color = '#1E90FF'; // 道奇蓝
-            iconPath = '/static/custom-icons/location-pin-moved.svg';
-            break;
+            color = '#1E90FF'
+            iconPath = '/static/custom-icons/location-pin-moved.svg'
+            break
           case '兴奋':
-            color = '#FF4500'; // 橙红色
-            iconPath = '/static/custom-icons/location-pin-excited.svg';
-            break;
+            color = '#FF4500'
+            iconPath = '/static/custom-icons/location-pin-excited.svg'
+            break
           case '平静':
-            color = '#32CD32'; // 酸橙绿
-            iconPath = '/static/custom-icons/location-pin-calm.svg';
-            break;
+            color = '#32CD32'
+            iconPath = '/static/custom-icons/location-pin-calm.svg'
+            break
           case '忧郁':
-            color = '#4169E1'; // 皇家蓝
-            iconPath = '/static/custom-icons/location-pin-sad.svg';
-            break;
+            color = '#4169E1'
+            iconPath = '/static/custom-icons/location-pin-sad.svg'
+            break
           case '思念':
-            color = '#8A2BE2'; // 蓝紫色
-            iconPath = '/static/custom-icons/location-pin-miss.svg';
-            break;
+            color = '#8A2BE2'
+            iconPath = '/static/custom-icons/location-pin-miss.svg'
+            break
+          case '感伤':
+            color = '#708090'
+            iconPath = '/static/custom-icons/location-pin-sentimental.svg'
+            break
         }
-        
+
+        // 拼接序号前缀，如 "② 丽江古城"
+        const order = chronoOrder.get(record)
+        let calloutContent = record.location
+        if (order) {
+          calloutContent = this.getCircledNumber(order) + ' ' + record.location
+        }
+
         return {
           id: index,
           longitude: record.longitude || 0,
           latitude: record.latitude || 0,
           title: record.location,
-          // 使用更有吸引力的标记点
           iconPath: iconPath,
           width: 40,
           height: 40,
           callout: {
-            content: record.location,
-            display: 'ALWAYS', // 始终显示标记点名称
+            content: calloutContent,
+            display: 'ALWAYS',
             borderRadius: 8,
             padding: 12,
             bgColor: '#ffffff',
@@ -299,45 +329,35 @@ export default {
           }
         }
       })
-      
-      // 轨迹按日期升序连线（列表仍可为新到旧，避免路线与时间倒流）
-      const sortedForPath = [...this.travelHistory]
-        .filter(record => record.longitude && record.latitude)
-        .sort((a, b) => {
-          const ta = new Date(a.date).getTime()
-          const tb = new Date(b.date).getTime()
-          const na = Number.isFinite(ta)
-          const nb = Number.isFinite(tb)
-          if (na && nb && ta !== tb) return ta - tb
-          return 0
-        })
+
+      // ---- 3. 绘制轨迹连线 ----
       const points = sortedForPath.map(record => ({
         longitude: record.longitude,
         latitude: record.latitude
       }))
-      
-      if (points.length > 1) {
-        this.mapPolyline = [{
+
+      this.mapPolyline = []
+
+      if (points.length >= 2) {
+        // 白色背景线，增强可见性
+        this.mapPolyline.push({
           points: points,
-          color: '#007AFFCC', // 半透明蓝色
-          width: 8, // 从6增加到8
-          dottedLine: false,
-          arrowLine: true, // 显示箭头方向
-          borderColor: '#007AFF',
-          borderWidth: 1
-        }]
-      }
-      
-      // 如果点数较多，添加一个更粗的背景线以增强可见性
-      if (points.length > 2) {
-        this.mapPolyline.unshift({
-          points: points,
-          color: '#FFFFFF99', // 更明显的半透明白色背景线
-          width: 12, // 从10增加到12
+          color: '#FFFFFF99',
+          width: 12,
           dottedLine: false
-        });
+        })
+        // 主轨迹线 + 箭头
+        this.mapPolyline.push({
+          points: points,
+          color: '#007AFF',
+          width: 6,
+          dottedLine: false,
+          arrowLine: true,
+          borderColor: '#005EC4',
+          borderWidth: 1
+        })
       }
-      
+
       // 根据足迹范围自动调整地图视野
       this.fitMapToBounds(points);
     },
@@ -407,9 +427,20 @@ export default {
         '兴奋': '🤩',
         '平静': '😌',
         '忧郁': '😔',
-        '思念': '🥺'
+        '思念': '🥺',
+        '感伤': '😿'
       }
       return labels[emotion] || emotion
+    },
+    
+    // 数字 → 带圈序号，如 1→①  5→⑤  21→"21"
+    getCircledNumber(n) {
+      const circled = [
+        '①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩',
+        '⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳'
+      ]
+      if (n >= 1 && n <= 20) return circled[n - 1]
+      return String(n)
     },
     
     formatDate(dateString) {

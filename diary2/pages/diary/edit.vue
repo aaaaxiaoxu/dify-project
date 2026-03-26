@@ -309,7 +309,8 @@ export default {
         { label: '🤩 兴奋', value: '兴奋' },
         { label: '😌 平静', value: '平静' },
         { label: '😔 忧郁', value: '忧郁' },
-        { label: '🥺 思念', value: '思念' }
+        { label: '🥺 思念', value: '思念' },
+        { label: '😿 感伤', value: '感伤' }
       ],
       aiSuggestion: '',
       formats: {},

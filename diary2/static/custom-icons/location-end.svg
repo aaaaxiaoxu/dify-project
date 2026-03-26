@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- red circle -->
+  <circle cx="12" cy="12" r="10" fill="#FF3B30" stroke="#FFFFFF" stroke-width="2"/>
+  <!-- flag shape = "destination" -->
+  <rect x="7" y="5" width="2" height="14" rx="0.5" fill="#FFFFFF"/>
+  <path d="M 9 5 L 18 8 L 9 11 Z" fill="#FFFFFF"/>
+</svg>

@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- pin shape -->
   <path d="M 16 2 C 10.477 2 6 6.477 6 12 C 6 18.5 16 30 16 30 C 16 30 26 18.5 26 12 C 26 6.477 21.523 2 16 2 Z" fill="#8A2BE2"/>
-  <circle cx="16" cy="12" r="5" fill="#FFFFFF"/>
-  <circle cx="16" cy="12" r="3" fill="#8A2BE2"/>
+  <!-- face background -->
+  <circle cx="16" cy="12" r="6" fill="#FFFFFF"/>
+  <!-- slightly sad eyes -->
+  <circle cx="13.5" cy="10.8" r="1" fill="#333"/>
+  <circle cx="18.5" cy="10.8" r="1" fill="#333"/>
+  <!-- slightly open oval mouth (yearning) -->
+  <ellipse cx="16" cy="14.5" rx="1.5" ry="1" fill="none" stroke="#333" stroke-width="1.1"/>
 </svg>
