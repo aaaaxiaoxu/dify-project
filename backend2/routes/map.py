@@ -6,6 +6,7 @@ from geo_utils import (
     unique_location_strings,
     unique_travel_day_count,
 )
+from datetime import date as date_type
 import requests
 
 from tencent_geocode import forward_geocode_address
@@ -62,8 +63,27 @@ def get_map_stats():
 def get_map_detail():
     current_user_id = int(get_jwt_identity())
     
-    # 获取当前用户的所有日记
-    user_diaries = Diary.query.filter_by(user_id=current_user_id, is_draft=False).order_by(Diary.date.desc()).all()
+    query = Diary.query.filter_by(user_id=current_user_id, is_draft=False)
+    
+    # 可选日期范围筛选 (YYYY-MM-DD)
+    start_date_str = request.args.get('start_date')
+    end_date_str = request.args.get('end_date')
+    
+    if start_date_str:
+        try:
+            sd = date_type.fromisoformat(start_date_str)
+            query = query.filter(Diary.date >= sd)
+        except (ValueError, TypeError):
+            pass
+    
+    if end_date_str:
+        try:
+            ed = date_type.fromisoformat(end_date_str)
+            query = query.filter(Diary.date <= ed)
+        except (ValueError, TypeError):
+            pass
+    
+    user_diaries = query.order_by(Diary.date.desc()).all()
     
     # 构建详细数据
     detail_data = {

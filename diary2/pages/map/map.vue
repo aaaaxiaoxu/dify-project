@@ -21,6 +21,30 @@
     </view>
     
     <view class="stats-section">
+      <!-- 时间筛选 -->
+      <view class="filter-bar">
+        <view 
+          v-for="tab in filterTabs" 
+          :key="tab.value"
+          class="filter-chip"
+          :class="{ active: activeFilter === tab.value }"
+          @click="onFilterChange(tab.value)"
+        >
+          <text>{{ tab.label }}</text>
+        </view>
+      </view>
+      
+      <!-- 自定义日期范围 -->
+      <view v-if="activeFilter === 'custom'" class="custom-date-range">
+        <picker mode="date" :value="customStartDate" @change="onStartDateChange">
+          <view class="date-picker-btn">{{ customStartDate || '开始日期' }}</view>
+        </picker>
+        <text class="date-range-sep">至</text>
+        <picker mode="date" :value="customEndDate" @change="onEndDateChange">
+          <view class="date-picker-btn">{{ customEndDate || '结束日期' }}</view>
+        </picker>
+      </view>
+      
       <view class="stats-card">
         <view class="stat-item">
           <text class="stat-number">{{ travelStats.totalCities }}</text>
@@ -81,7 +105,17 @@ export default {
         totalDistance: 0,
         totalDays: 0
       },
-      travelHistory: []
+      travelHistory: [],
+      allTravelHistory: [],      // 完整数据（未筛选）
+      activeFilter: 'all',
+      customStartDate: '',
+      customEndDate: '',
+      filterTabs: [
+        { label: '全部', value: 'all' },
+        { label: '本月', value: 'month' },
+        { label: '去年', value: 'lastYear' },
+        { label: '自定义', value: 'custom' }
+      ]
     }
   },
   
@@ -169,13 +203,8 @@ export default {
           'Authorization': 'Bearer ' + token
         }
       }).then(res => {
-        // 设置统计数据
-        this.travelStats.totalCities = res.stats.total_cities
-        this.travelStats.totalDistance = res.stats.total_distance
-        this.travelStats.totalDays = res.stats.total_days
-        
-        // 设置旅行历史
-        this.travelHistory = res.history.map(item => ({
+        // 保存完整数据
+        this.allTravelHistory = res.history.map(item => ({
           location: item.location,
           date: item.date,
           emotion: item.emotion,
@@ -183,8 +212,8 @@ export default {
           latitude: item.latitude || 0
         }))
         
-        // 设置地图标记点
-        this.setMapMarkers()
+        // 按当前筛选条件过滤并渲染
+        this.applyFilter()
       }).catch(err => {
         console.error('获取地图数据失败:', err)
         // 出错时使用默认数据
@@ -194,7 +223,7 @@ export default {
     
     loadDefaultData() {
       // 使用默认数据
-      this.travelHistory = [
+      this.allTravelHistory = [
         {
           location: '杭州西湖',
           date: '2023-05-15',
@@ -232,13 +261,7 @@ export default {
         }
       ]
       
-      const local = this.computeFootprintFromRecords(this.travelHistory)
-      this.travelStats.totalCities = local.cities
-      this.travelStats.totalDistance = local.distanceKm
-      this.travelStats.totalDays = local.days
-
-      // 设置地图标记点
-      this.setMapMarkers()
+      this.applyFilter()
     },
     
     setMapMarkers() {
@@ -443,6 +466,100 @@ export default {
       return String(n)
     },
     
+    // ---- 时间筛选相关 ----
+    onFilterChange(value) {
+      this.activeFilter = value
+      if (value === 'custom') {
+        // 如果已经选过日期，立即应用
+        if (this.customStartDate && this.customEndDate) {
+          this.applyFilter()
+        }
+      } else {
+        this.applyFilter()
+      }
+    },
+    
+    onStartDateChange(e) {
+      this.customStartDate = e.detail.value
+      if (this.customEndDate) {
+        if (this.customStartDate > this.customEndDate) {
+          uni.showToast({ title: '开始日期不能晚于结束日期', icon: 'none' })
+          return
+        }
+        this.applyFilter()
+      }
+    },
+    
+    onEndDateChange(e) {
+      this.customEndDate = e.detail.value
+      if (this.customStartDate) {
+        if (this.customStartDate > this.customEndDate) {
+          uni.showToast({ title: '结束日期不能早于开始日期', icon: 'none' })
+          return
+        }
+        this.applyFilter()
+      }
+    },
+    
+    getFilterDateRange() {
+      const now = new Date()
+      switch (this.activeFilter) {
+        case 'all':
+          return null
+        case 'month': {
+          const y = now.getFullYear()
+          const m = now.getMonth()     // 0-based
+          const firstDay = new Date(y, m, 1)
+          const lastDay = new Date(y, m + 1, 0)
+          return {
+            start: this.toDateStr(firstDay),
+            end: this.toDateStr(lastDay)
+          }
+        }
+        case 'lastYear': {
+          const y = now.getFullYear() - 1
+          return { start: `${y}-01-01`, end: `${y}-12-31` }
+        }
+        case 'custom': {
+          if (this.customStartDate && this.customEndDate) {
+            return { start: this.customStartDate, end: this.customEndDate }
+          }
+          return null
+        }
+        default:
+          return null
+      }
+    },
+    
+    toDateStr(d) {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${day}`
+    },
+    
+    applyFilter() {
+      const range = this.getFilterDateRange()
+      
+      if (!range) {
+        this.travelHistory = [...this.allTravelHistory]
+      } else {
+        this.travelHistory = this.allTravelHistory.filter(record => {
+          if (!record.date) return false
+          return record.date >= range.start && record.date <= range.end
+        })
+      }
+      
+      // 重新计算统计数据
+      const local = this.computeFootprintFromRecords(this.travelHistory)
+      this.travelStats.totalCities = local.cities
+      this.travelStats.totalDistance = local.distanceKm
+      this.travelStats.totalDays = local.days
+      
+      // 重建地图标记和轨迹线
+      this.setMapMarkers()
+    },
+    
     formatDate(dateString) {
       const date = new Date(dateString)
       return `${date.getMonth() + 1}月${date.getDate()}日`
@@ -510,6 +627,45 @@ export default {
 
 .stats-section {
   margin-bottom: 30rpx;
+}
+
+.filter-bar {
+  display: flex;
+  gap: 16rpx;
+  margin-bottom: 24rpx;
+}
+
+.filter-chip {
+  padding: 12rpx 30rpx;
+  border-radius: 30rpx;
+  background: #f0f0f0;
+  font-size: 26rpx;
+  color: #666;
+}
+
+.filter-chip.active {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+}
+
+.custom-date-range {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 24rpx;
+}
+
+.date-picker-btn {
+  padding: 14rpx 24rpx;
+  background: #f0f0f0;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  color: #333;
+}
+
+.date-range-sep {
+  font-size: 26rpx;
+  color: #999;
 }
 
 .stats-card {
