@@ -1,16 +1,82 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import date, datetime
 from sqlalchemy.orm import selectinload
+import threading
+import json
+import logging
 
-from models import Diary, DiaryImage, DiaryVideo
-from extensions import db
+from models import Diary, DiaryImage, DiaryVideo, AIAnalysis
+from extensions import db, dify_client
 from utils.html_sanitize import (
     diary_html_is_effectively_empty,
     sanitize_diary_html,
+    html_to_plain_text,
 )
 
 diary_bp = Blueprint('diary', __name__)
+logger = logging.getLogger(__name__)
+
+
+def _trigger_ai_analysis(app, diary_id):
+    """在后台线程中执行 AI 分析并将结果存库"""
+    with app.app_context():
+        try:
+            diary = Diary.query.options(
+                selectinload(Diary.images),
+                selectinload(Diary.videos),
+            ).filter_by(id=diary_id).first()
+
+            if not diary:
+                return
+
+            diary_content = diary.content or ''
+            plain_text = html_to_plain_text(diary_content)
+            image_urls = [img.image_url for img in diary.images] if diary.images else []
+            video_urls = [vid.video_url for vid in diary.videos] if diary.videos else []
+
+            # 调用 Dify 分析
+            dify_result = dify_client.analyze_diary_content(
+                plain_text if plain_text.strip() else diary_content,
+                image_urls=image_urls,
+                video_urls=video_urls
+            )
+
+            if dify_result:
+                analysis_result = dify_result
+            else:
+                # Dify 不可用时回退到本地分析
+                from routes.ai import analyze_diary_content
+                analysis_result = analyze_diary_content(diary_content)
+
+            # 存库
+            keywords_value = analysis_result.get("keywords", [])
+            if isinstance(keywords_value, list):
+                keywords_str = json.dumps(keywords_value, ensure_ascii=False)
+            else:
+                keywords_str = str(keywords_value)
+
+            ai_record = AIAnalysis(
+                diary_id=diary_id,
+                emotion_analysis=analysis_result.get("emotion_analysis", ""),
+                keywords=keywords_str,
+                travel_advice=analysis_result.get("travel_advice", ""),
+            )
+            db.session.add(ai_record)
+            db.session.commit()
+            logger.info("AI 分析完成并存库: diary_id=%s", diary_id)
+
+        except Exception as e:
+            logger.error("AI 分析后台任务失败: diary_id=%s, error=%s", diary_id, e)
+            db.session.rollback()
+
+
+def _start_ai_analysis(diary_id):
+    """启动后台线程执行 AI 分析（不阻塞当前请求）"""
+    app = current_app._get_current_object()
+    thread = threading.Thread(target=_trigger_ai_analysis, args=(app, diary_id))
+    thread.daemon = True
+    thread.start()
 
 
 def _parse_client_coords(lat_raw, lng_raw):
@@ -315,6 +381,10 @@ def create_diary():
         db.session.add(diary_video)
     
     db.session.commit()
+
+    # 非草稿日记落库后自动触发 AI 分析
+    if not payload["is_draft"]:
+        _start_ai_analysis(new_diary.id)
     
     return jsonify(
         {
@@ -385,6 +455,12 @@ def update_diary(diary_id):
             db.session.add(diary_video)
     
     db.session.commit()
+
+    # 非草稿日记更新后，删除旧分析并重新触发 AI 分析
+    if not payload["is_draft"]:
+        AIAnalysis.query.filter_by(diary_id=diary_id).delete()
+        db.session.commit()
+        _start_ai_analysis(diary.id)
     
     return jsonify(
         {

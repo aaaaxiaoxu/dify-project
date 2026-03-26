@@ -939,6 +939,47 @@ export default {
     
     getAiSuggestion() {
       this.gettingSuggestion = true
+
+      // 如果是编辑已有日记，用 diary_id 调用（能分析图片和视频）
+      if (this.isEdit && this.diaryId) {
+        request({
+          url: config.AI_ANALYSIS,
+          method: 'POST',
+          data: { diary_id: this.diaryId },
+          header: { 'Authorization': 'Bearer ' + this.$store.state.token }
+        })
+          .then((res) => {
+            this.gettingSuggestion = false
+            let suggestionText = res.emotion_analysis || ''
+
+            if (res.keywords && res.keywords.length > 0) {
+              const kw = Array.isArray(res.keywords) ? res.keywords : []
+              suggestionText += `\n\n关键词: ${kw.join(', ')}`
+            }
+
+            if (res.travel_advice) {
+              suggestionText += `\n\n旅行建议: ${res.travel_advice}`
+            }
+
+            if (res.writing_style) {
+              suggestionText += `\n\n写作风格: ${res.writing_style}`
+            }
+
+            if (res.writing_suggestion) {
+              suggestionText += `\n\n写作建议: ${res.writing_suggestion}`
+            }
+
+            this.aiSuggestion =
+              suggestionText || '你可以描述一下当时的感受和周围的环境。'
+          })
+          .catch(() => {
+            this.gettingSuggestion = false
+            this.aiSuggestion = '你可以描述一下当时的感受和周围的环境。'
+          })
+        return
+      }
+
+      // 新建日记还未保存，用当前编辑器的文字内容做本地分析
       const send = (content) => {
         request({
           url: config.AI_ANALYSIS,

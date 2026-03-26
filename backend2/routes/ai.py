@@ -1,10 +1,12 @@
 from flask import Blueprint, request, jsonify, current_app
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import jwt_required, get_jwt_identity
 import jieba
 import jieba.analyse
 import re
+import json
 from collections import Counter
-from extensions import dify_client
+from extensions import dify_client, db
+from models import Diary, AIAnalysis
 from utils.html_sanitize import html_to_plain_text
 
 ai_bp = Blueprint('ai', __name__)
@@ -281,19 +283,124 @@ def analyze_diary_content(content):
 @jwt_required()
 def ai_analysis():
     data = request.get_json() or {}
-    diary_content = data.get('content', '')
+    diary_id = data.get('diary_id')
+
+    # ---- 兼容模式：没有 diary_id 时用传入的 content 做本地分析（新建日记场景） ----
+    if not diary_id:
+        diary_content = data.get('content', '')
+        if not diary_content:
+            return jsonify({"error": "缺少 diary_id 或 content 参数"}), 400
+        analysis_result = analyze_diary_content(diary_content)
+        return jsonify(analysis_result), 200
+
+    # ---- 1. 查库：已有分析结果则直接返回 ----
+    existing = AIAnalysis.query.filter_by(diary_id=diary_id).first()
+    if existing:
+        try:
+            keywords = json.loads(existing.keywords)
+        except (json.JSONDecodeError, TypeError):
+            keywords = existing.keywords
+        return jsonify({
+            "emotion_analysis": existing.emotion_analysis,
+            "keywords": keywords,
+            "travel_advice": existing.travel_advice,
+        }), 200
+
+    # ---- 2. 查询日记，获取文字、图片、视频 ----
+    user_id = get_jwt_identity()
+    diary = Diary.query.filter_by(id=diary_id, user_id=user_id).first()
+    if not diary:
+        return jsonify({"error": "日记不存在"}), 404
+
+    diary_content = diary.content or ''
     plain_for_llm = html_to_plain_text(diary_content)
 
-    # 尝试使用Dify进行分析（传入纯文本，避免 HTML 干扰）
+    # 收集图片和视频 URL
+    image_urls = [img.image_url for img in diary.images] if diary.images else []
+    video_urls = [vid.video_url for vid in diary.videos] if diary.videos else []
+
+    # ---- 3. 调用 Dify 分析（传文字 + 图片 + 视频） ----
     dify_result = dify_client.analyze_diary_content(
-        plain_for_llm if plain_for_llm.strip() else diary_content
+        plain_for_llm if plain_for_llm.strip() else diary_content,
+        image_urls=image_urls,
+        video_urls=video_urls
     )
 
     if dify_result:
-        # 使用Dify分析结果
         analysis_result = dify_result
     else:
-        # Dify不可用时回退到本地分析（内部会再次 strip，兼容纯文本）
+        # Dify 不可用时回退到本地分析
         analysis_result = analyze_diary_content(diary_content)
-    
+
+    # ---- 4. 存库 ----
+    keywords_value = analysis_result.get("keywords", [])
+    if isinstance(keywords_value, list):
+        keywords_str = json.dumps(keywords_value, ensure_ascii=False)
+    else:
+        keywords_str = str(keywords_value)
+
+    ai_record = AIAnalysis(
+        diary_id=diary_id,
+        emotion_analysis=analysis_result.get("emotion_analysis", ""),
+        keywords=keywords_str,
+        travel_advice=analysis_result.get("travel_advice", ""),
+    )
+    db.session.add(ai_record)
+    db.session.commit()
+
+    return jsonify(analysis_result), 200
+
+
+@ai_bp.route('/analysis/refresh', methods=['POST'])
+@jwt_required()
+def ai_analysis_refresh():
+    """强制重新分析（日记编辑后可调用）"""
+    data = request.get_json() or {}
+    diary_id = data.get('diary_id')
+
+    if not diary_id:
+        return jsonify({"error": "缺少 diary_id 参数"}), 400
+
+    # 删除旧的分析记录
+    AIAnalysis.query.filter_by(diary_id=diary_id).delete()
+    db.session.commit()
+
+    # 查询日记
+    user_id = get_jwt_identity()
+    diary = Diary.query.filter_by(id=diary_id, user_id=user_id).first()
+    if not diary:
+        return jsonify({"error": "日记不存在"}), 404
+
+    diary_content = diary.content or ''
+    plain_for_llm = html_to_plain_text(diary_content)
+    image_urls = [img.image_url for img in diary.images] if diary.images else []
+    video_urls = [vid.video_url for vid in diary.videos] if diary.videos else []
+
+    dify_result = dify_client.analyze_diary_content(
+        plain_for_llm if plain_for_llm.strip() else diary_content,
+        image_urls=image_urls,
+        video_urls=video_urls
+    )
+
+    if dify_result:
+        analysis_result = dify_result
+    else:
+        analysis_result = analyze_diary_content(diary_content)
+
+    # 存入新记录
+    keywords_value = analysis_result.get("keywords", [])
+    if isinstance(keywords_value, list):
+        keywords_str = json.dumps(keywords_value, ensure_ascii=False)
+    else:
+        keywords_str = str(keywords_value)
+
+    ai_record = AIAnalysis(
+        diary_id=diary_id,
+        emotion_analysis=analysis_result.get("emotion_analysis", ""),
+        keywords=keywords_str,
+        travel_advice=analysis_result.get("travel_advice", ""),
+    )
+    db.session.add(ai_record)
+    db.session.commit()
+
     return jsonify(analysis_result), 200

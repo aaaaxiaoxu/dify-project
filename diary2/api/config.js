@@ -27,6 +27,7 @@ export default {
   
   // AI分析相关接口
   AI_ANALYSIS: BASE_URL + '/ai/analysis',
+  AI_ANALYSIS_REFRESH: BASE_URL + '/ai/analysis/refresh',
   
   // 文件上传接口
   FILE_UPLOAD: BASE_URL + '/file/upload',

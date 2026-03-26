@@ -110,7 +110,6 @@ export default {
     if (options.id) {
       this.diaryId = options.id
       this.loadDiaryData(options.id)
-      this.loadAiAnalysis(options.id)
     }
   },
   
@@ -133,6 +132,8 @@ export default {
           images: res.images || [],
           videos: res.videos || []
         }
+        // 日记数据加载完成后再调用 AI 分析
+        this.loadAiAnalysis(this.diaryId)
       }).catch(err => {
         uni.showToast({
           title: '加载日记失败',
@@ -142,12 +143,12 @@ export default {
     },
     
     loadAiAnalysis(id) {
-      // 调用后端AI分析接口
+      // 调用后端AI分析接口，传 diary_id，后端会自动查库/调 Dify
       request({
         url: config.AI_ANALYSIS,
         method: 'POST',
         data: {
-          content: this.diaryData.content
+          diary_id: id
         },
         header: {
           'Authorization': 'Bearer ' + this.$store.state.token
@@ -155,12 +156,8 @@ export default {
       }).then(res => {
         this.aiAnalysis = res
       }).catch(err => {
-        // 使用默认分析结果
-        this.aiAnalysis = {
-          emotion_analysis: '这篇日记表达了作者对旅行地的喜爱之情，整体情绪非常积极向上。',
-          keywords: '["旅行", "美好", "回忆"]',
-          travel_advice: '根据您的旅行经历，推荐您下次可以尝试不同的旅行方式。'
-        }
+        // 分析失败时不显示分析模块
+        this.aiAnalysis = null
       })
     },
     
