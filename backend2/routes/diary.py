@@ -1,6 +1,8 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import date, datetime
+from sqlalchemy.orm import selectinload
+
 from models import Diary, DiaryImage, DiaryVideo
 from extensions import db
 from utils.html_sanitize import (
@@ -38,46 +40,58 @@ def _parse_date_value(value):
         return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
     raise ValueError("date 字段格式错误")
 
-@diary_bp.route('/list', methods=['GET'])
-@jwt_required()
-def get_diary_list():
-    current_user_id = int(get_jwt_identity())
-    
-    # 筛选出当前用户的日记
-    user_diaries = Diary.query.filter_by(user_id=current_user_id).order_by(Diary.created_at.desc()).all()
-    
-    diaries_data = []
-    for diary in user_diaries:
-        diary_data = {
-            "id": diary.id,
-            "user_id": diary.user_id,
-            "title": diary.title,
-            "location": diary.location,
-            "latitude": float(diary.latitude) if diary.latitude else None,
-            "longitude": float(diary.longitude) if diary.longitude else None,
-            "date": diary.date.isoformat() if diary.date else None,
-            "emotion": diary.emotion,
-            "content": diary.content,
-            "images": [image.image_url for image in diary.images],
-            "videos": [{"url": video.video_url, "thumbnail": video.thumbnail_url} for video in diary.videos],
-            "created_at": diary.created_at.isoformat() if diary.created_at else None
-        }
-        diaries_data.append(diary_data)
-    
-    return jsonify(diaries_data), 200
 
-@diary_bp.route('/detail/<int:diary_id>', methods=['GET'])
-@jwt_required()
-def get_diary_detail(diary_id):
-    current_user_id = int(get_jwt_identity())
-    
-    # 查找日记
-    diary = Diary.query.filter_by(id=diary_id, user_id=current_user_id).first()
-    
-    if diary is None:
-        return jsonify({"msg": "日记不存在"}), 404
-    
-    diary_data = {
+def _is_remote_url(value):
+    return isinstance(value, str) and value.startswith(("http://", "https://"))
+
+
+def _normalize_images(images):
+    if images is None:
+        return []
+    if not isinstance(images, list):
+        raise ValueError("images 字段格式错误，必须是 URL 数组")
+
+    normalized = []
+    for index, image_url in enumerate(images):
+        if not isinstance(image_url, str) or not image_url.strip():
+            raise ValueError(f"第 {index + 1} 张图片格式错误")
+        image_url = image_url.strip()
+        if not _is_remote_url(image_url):
+            raise ValueError("图片尚未上传完成，请先上传图片再保存日记")
+        normalized.append(image_url)
+    return normalized
+
+
+def _normalize_videos(videos):
+    if videos is None:
+        return []
+    if not isinstance(videos, list):
+        raise ValueError("videos 字段格式错误，必须是对象数组")
+
+    normalized = []
+    for index, video_data in enumerate(videos):
+        if not isinstance(video_data, dict):
+            raise ValueError(f"第 {index + 1} 个视频格式错误")
+
+        video_url = video_data.get("url")
+        thumbnail_url = video_data.get("thumbnail")
+        video_url = video_url.strip() if isinstance(video_url, str) else ""
+        thumbnail_url = thumbnail_url.strip() if isinstance(thumbnail_url, str) else None
+
+        if not video_url or not _is_remote_url(video_url):
+            raise ValueError("视频尚未上传完成，请先上传视频再保存日记")
+        if thumbnail_url and not _is_remote_url(thumbnail_url):
+            raise ValueError("视频缩略图地址无效")
+
+        normalized.append({
+            "url": video_url,
+            "thumbnail": thumbnail_url or None,
+        })
+    return normalized
+
+
+def _serialize_diary(diary):
+    return {
         "id": diary.id,
         "user_id": diary.user_id,
         "title": diary.title,
@@ -89,10 +103,46 @@ def get_diary_detail(diary_id):
         "content": diary.content,
         "images": [image.image_url for image in diary.images],
         "videos": [{"url": video.video_url, "thumbnail": video.thumbnail_url} for video in diary.videos],
-        "created_at": diary.created_at.isoformat() if diary.created_at else None
+        "created_at": diary.created_at.isoformat() if diary.created_at else None,
     }
+
+@diary_bp.route('/list', methods=['GET'])
+@jwt_required()
+def get_diary_list():
+    current_user_id = int(get_jwt_identity())
     
-    return jsonify(diary_data), 200
+    # 筛选出当前用户的日记
+    user_diaries = (
+        Diary.query.options(
+            selectinload(Diary.images),
+            selectinload(Diary.videos),
+        )
+        .filter_by(user_id=current_user_id)
+        .order_by(Diary.created_at.desc())
+        .all()
+    )
+    
+    return jsonify([_serialize_diary(diary) for diary in user_diaries]), 200
+
+@diary_bp.route('/detail/<int:diary_id>', methods=['GET'])
+@jwt_required()
+def get_diary_detail(diary_id):
+    current_user_id = int(get_jwt_identity())
+    
+    # 查找日记
+    diary = (
+        Diary.query.options(
+            selectinload(Diary.images),
+            selectinload(Diary.videos),
+        )
+        .filter_by(id=diary_id, user_id=current_user_id)
+        .first()
+    )
+    
+    if diary is None:
+        return jsonify({"msg": "日记不存在"}), 404
+
+    return jsonify(_serialize_diary(diary)), 200
 
 @diary_bp.route('/create', methods=['POST'])
 @jwt_required()
@@ -112,6 +162,12 @@ def create_diary():
     content_html = sanitize_diary_html(data.get("content"))
     if diary_html_is_effectively_empty(content_html):
         return jsonify({"msg": "内容不能为空"}), 400
+
+    try:
+        images = _normalize_images(data.get('images'))
+        videos = _normalize_videos(data.get('videos'))
+    except ValueError as exc:
+        return jsonify({"msg": str(exc)}), 400
 
     parsed = _parse_client_coords(data.get("latitude"), data.get("longitude"))
     if not parsed:
@@ -134,10 +190,9 @@ def create_diary():
         content=content_html
     )
     db.session.add(new_diary)
-    db.session.commit()
+    db.session.flush()
     
     # 处理图片
-    images = data.get('images', [])
     for i, image_url in enumerate(images):
         diary_image = DiaryImage(
             diary_id=new_diary.id,
@@ -147,7 +202,6 @@ def create_diary():
         db.session.add(diary_image)
     
     # 处理视频
-    videos = data.get('videos', [])
     for i, video_data in enumerate(videos):
         diary_video = DiaryVideo(
             diary_id=new_diary.id,
@@ -172,6 +226,12 @@ def update_diary(diary_id):
     
     if diary is None:
         return jsonify({"msg": "日记不存在"}), 404
+
+    try:
+        images = _normalize_images(data.get('images')) if 'images' in data else None
+        videos = _normalize_videos(data.get('videos')) if 'videos' in data else None
+    except ValueError as exc:
+        return jsonify({"msg": str(exc)}), 400
     
     # 更新日记
     diary.title = data.get('title', diary.title)
@@ -196,28 +256,28 @@ def update_diary(diary_id):
             return jsonify({"msg": "内容不能为空"}), 400
         diary.content = content_html
     
-    # 更新图片（先删除再重新添加）
-    DiaryImage.query.filter_by(diary_id=diary_id).delete()
-    images = data.get('images', [])
-    for i, image_url in enumerate(images):
-        diary_image = DiaryImage(
-            diary_id=diary.id,
-            image_url=image_url,
-            sort_order=i
-        )
-        db.session.add(diary_image)
+    if images is not None:
+        # 更新图片（先删除再重新添加）
+        DiaryImage.query.filter_by(diary_id=diary_id).delete()
+        for i, image_url in enumerate(images):
+            diary_image = DiaryImage(
+                diary_id=diary.id,
+                image_url=image_url,
+                sort_order=i
+            )
+            db.session.add(diary_image)
     
-    # 更新视频（先删除再重新添加）
-    DiaryVideo.query.filter_by(diary_id=diary_id).delete()
-    videos = data.get('videos', [])
-    for i, video_data in enumerate(videos):
-        diary_video = DiaryVideo(
-            diary_id=diary.id,
-            video_url=video_data.get('url'),
-            thumbnail_url=video_data.get('thumbnail'),
-            sort_order=i
-        )
-        db.session.add(diary_video)
+    if videos is not None:
+        # 更新视频（先删除再重新添加）
+        DiaryVideo.query.filter_by(diary_id=diary_id).delete()
+        for i, video_data in enumerate(videos):
+            diary_video = DiaryVideo(
+                diary_id=diary.id,
+                video_url=video_data.get('url'),
+                thumbnail_url=video_data.get('thumbnail'),
+                sort_order=i
+            )
+            db.session.add(diary_video)
     
     db.session.commit()
     

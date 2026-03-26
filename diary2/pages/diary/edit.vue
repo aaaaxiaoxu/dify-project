@@ -421,13 +421,20 @@ export default {
       this.editorCtx.removeFormat()
     },
 
-    uploadEditorImage(filePath) {
+    isRemoteMediaUrl(value) {
+      return typeof value === 'string' && /^https?:\/\//i.test(value)
+    },
+
+    uploadMedia(filePath, mediaType) {
       const token = this.$store && this.$store.state ? this.$store.state.token : ''
       return new Promise((resolve, reject) => {
         uni.uploadFile({
           url: config.FILE_UPLOAD,
           filePath,
           name: 'file',
+          formData: {
+            media_type: mediaType
+          },
           header: {
             Authorization: 'Bearer ' + token
           },
@@ -435,7 +442,7 @@ export default {
             try {
               const body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data
               if (body && body.url) {
-                resolve(body.url)
+                resolve(body)
               } else {
                 reject(new Error((body && body.msg) || '上传失败'))
               }
@@ -446,6 +453,51 @@ export default {
           fail: reject
         })
       })
+    },
+
+    uploadEditorImage(filePath) {
+      return this.uploadMedia(filePath, 'image').then((res) => res.url)
+    },
+
+    async uploadPendingDiaryMedia() {
+      const nextImages = []
+      for (let i = 0; i < this.diaryData.images.length; i += 1) {
+        const image = this.diaryData.images[i]
+        if (this.isRemoteMediaUrl(image)) {
+          nextImages.push(image)
+          continue
+        }
+        uni.showLoading({ title: `上传图片 ${i + 1}/${this.diaryData.images.length}`, mask: true })
+        const uploaded = await this.uploadMedia(image, 'image')
+        nextImages.push(uploaded.url)
+      }
+
+      const nextVideos = []
+      for (let i = 0; i < this.diaryData.videos.length; i += 1) {
+        const video = this.diaryData.videos[i] || {}
+        let videoUrl = video.url
+        let thumbnailUrl = video.thumbnail || ''
+
+        if (!this.isRemoteMediaUrl(videoUrl)) {
+          uni.showLoading({ title: `上传视频 ${i + 1}/${this.diaryData.videos.length}`, mask: true })
+          const uploadedVideo = await this.uploadMedia(videoUrl, 'video')
+          videoUrl = uploadedVideo.url
+        }
+
+        if (thumbnailUrl && !this.isRemoteMediaUrl(thumbnailUrl)) {
+          uni.showLoading({ title: `上传封面 ${i + 1}/${this.diaryData.videos.length}`, mask: true })
+          const uploadedThumb = await this.uploadMedia(thumbnailUrl, 'image')
+          thumbnailUrl = uploadedThumb.url
+        }
+
+        nextVideos.push({
+          url: videoUrl,
+          thumbnail: thumbnailUrl
+        })
+      }
+
+      this.diaryData.images = nextImages
+      this.diaryData.videos = nextVideos
     },
 
     insertEditorImage() {
@@ -835,11 +887,7 @@ export default {
       })
     },
 
-    submitDiaryRequest() {
-      uni.showLoading({
-        title: '保存中...'
-      })
-
+    async submitDiaryRequest() {
       const url = this.isEdit ? config.DIARY_UPDATE.replace('<int:diary_id>', this.diaryId) : config.DIARY_CREATE
       const method = this.isEdit ? 'PUT' : 'POST'
 
@@ -863,45 +911,59 @@ export default {
           }
         })
 
-      runSave()
-        .then((res) => {
-          uni.hideLoading()
-          if (res.msg === '创建成功' || res.msg === '更新成功' || res.diary_id) {
-            uni.showToast({
-              title: this.isEdit ? '更新成功' : '创建成功',
-              icon: 'success'
-            })
+      uni.showLoading({
+        title: '准备上传媒体...',
+        mask: true
+      })
 
-            setTimeout(() => {
-              uni.navigateBack()
-            }, 1500)
-          } else {
-            uni.showToast({
-              title: res.msg || '保存失败',
-              icon: 'none'
-            })
-          }
+      try {
+        await this.uploadPendingDiaryMedia()
+        uni.showLoading({
+          title: '保存中...',
+          mask: true
         })
-        .catch((err) => {
-          uni.hideLoading()
-          console.error('保存日记失败:', err)
-          if (err && err.data && (err.data.msg === '创建成功' || err.data.msg === '更新成功')) {
-            uni.showToast({
-              title: this.isEdit ? '更新成功' : '创建成功',
-              icon: 'success'
-            })
 
-            setTimeout(() => {
-              uni.navigateBack()
-            }, 1500)
-          } else {
-            const msg = err && err.data && err.data.msg
-            uni.showToast({
-              title: msg || '保存失败',
-              icon: 'none'
-            })
-          }
-        })
+        const res = await runSave()
+        uni.hideLoading()
+
+        if (res.msg === '创建成功' || res.msg === '更新成功' || res.diary_id) {
+          uni.showToast({
+            title: this.isEdit ? '更新成功' : '创建成功',
+            icon: 'success'
+          })
+
+          setTimeout(() => {
+            uni.navigateBack()
+          }, 1500)
+        } else {
+          uni.showToast({
+            title: res.msg || '保存失败',
+            icon: 'none'
+          })
+        }
+      } catch (err) {
+        uni.hideLoading()
+        console.error('保存日记失败:', err)
+        if (err && err.data && (err.data.msg === '创建成功' || err.data.msg === '更新成功')) {
+          uni.showToast({
+            title: this.isEdit ? '更新成功' : '创建成功',
+            icon: 'success'
+          })
+
+          setTimeout(() => {
+            uni.navigateBack()
+          }, 1500)
+        } else {
+          const msg =
+            (err && err.data && err.data.msg) ||
+            err.message ||
+            '保存失败'
+          uni.showToast({
+            title: msg,
+            icon: 'none'
+          })
+        }
+      }
     },
     
     cancelEdit() {

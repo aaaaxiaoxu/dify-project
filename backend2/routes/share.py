@@ -1,7 +1,9 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 import uuid
-from models import Diary, DiaryImage, DiaryVideo
+from sqlalchemy.orm import selectinload
+
+from models import Diary
 
 share_bp = Blueprint('share', __name__)
 
@@ -55,7 +57,14 @@ def get_share(token):
         return jsonify({"msg": "分享链接不存在或已过期"}), 404
     
     # 查找日记
-    diary = Diary.query.get(share_info['diary_id'])
+    diary = (
+        Diary.query.options(
+            selectinload(Diary.images),
+            selectinload(Diary.videos),
+        )
+        .filter_by(id=share_info['diary_id'])
+        .first()
+    )
     
     if diary is None:
         return jsonify({"msg": "日记不存在"}), 404

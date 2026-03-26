@@ -6,6 +6,12 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'travel-diary-secret-key'
     UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER') or 'uploads'
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'travel-diary-jwt-secret'
+    COS_SECRET_ID = os.environ.get('COS_SECRET_ID') or None
+    COS_SECRET_KEY = os.environ.get('COS_SECRET_KEY') or None
+    COS_REGION = os.environ.get('COS_REGION') or 'ap-guangzhou'
+    COS_BUCKET = os.environ.get('COS_BUCKET') or 'diary-1387359490'
+    COS_BASE_URL = (os.environ.get('COS_BASE_URL') or 'https://diary-1387359490.cos.ap-guangzhou.myqcloud.com').rstrip('/')
+    COS_MEDIA_PREFIX = (os.environ.get('COS_MEDIA_PREFIX') or 'media').strip('/')
     
     # 数据库配置 - 请根据您的实际MySQL配置修改用户名、密码和数据库名
     # 本地

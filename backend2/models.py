@@ -40,8 +40,20 @@ class Diary(db.Model):
     updated_at = db.Column(db.DateTime, default=get_current_time, onupdate=get_current_time, comment='更新时间')
     
     # 关系
-    images = db.relationship('DiaryImage', backref='diary', lazy=True, cascade='all, delete-orphan')
-    videos = db.relationship('DiaryVideo', backref='diary', lazy=True, cascade='all, delete-orphan')
+    images = db.relationship(
+        'DiaryImage',
+        backref='diary',
+        lazy='selectin',
+        cascade='all, delete-orphan',
+        order_by='DiaryImage.sort_order',
+    )
+    videos = db.relationship(
+        'DiaryVideo',
+        backref='diary',
+        lazy='selectin',
+        cascade='all, delete-orphan',
+        order_by='DiaryVideo.sort_order',
+    )
     ai_analysis = db.relationship('AIAnalysis', backref='diary', lazy=True, uselist=False, cascade='all, delete-orphan')
 
 class DiaryImage(db.Model):
