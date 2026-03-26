@@ -3,12 +3,29 @@
     <view class="header">
       <text class="title">我的日记</text>
     </view>
+
+    <view class="view-switch">
+      <view
+        class="view-tab"
+        :class="{ active: viewMode === 'published' }"
+        @click="viewMode = 'published'"
+      >
+        已发布
+      </view>
+      <view
+        class="view-tab"
+        :class="{ active: viewMode === 'drafts' }"
+        @click="viewMode = 'drafts'"
+      >
+        草稿箱
+      </view>
+    </view>
     
     <view class="filter-bar">
       <view class="search-box">
         <input 
           class="search-input" 
-          placeholder="搜索日记..." 
+          :placeholder="viewMode === 'drafts' ? '搜索草稿...' : '搜索日记...'" 
           v-model="searchKeyword"
           @input="handleSearch"
         />
@@ -34,7 +51,7 @@
         v-for="diary in filteredDiaries" 
         :key="diary.id" 
         class="diary-item"
-        @click="goToDiaryDetail(diary.id)"
+        @click="openDiary(diary)"
       >
         <view class="diary-image" v-if="diary.coverImage && diary.coverImage.length > 0">
           <image :src="diary.coverImage" mode="aspectFill" class="diary-image-content" @error="onImageError(diary)"></image>
@@ -45,6 +62,7 @@
         <view class="diary-content">
           <view class="diary-header">
             <text class="diary-title">{{ diary.title }}</text>
+            <view v-if="diary.isDraft" class="draft-badge">草稿</view>
             <view class="emotion-tag" :class="'emotion-' + diary.emotion">
               {{ getEmotionLabel(diary.emotion) }}
             </view>
@@ -52,9 +70,9 @@
           <text class="diary-location">📍 {{ diary.location }}</text>
           <text class="diary-excerpt">{{ contentExcerpt(diary.content) }}</text>
           <view class="diary-footer">
-            <text class="diary-date">{{ formatDate(diary.date) }}</text>
+            <text class="diary-date">{{ formatDiaryMeta(diary) }}</text>
             <view class="diary-actions">
-              <text class="action-item" @click.stop="handleEdit(diary.id)">编辑</text>
+              <text class="action-item" @click.stop="handleEdit(diary.id)">{{ diary.isDraft ? '继续编辑' : '编辑' }}</text>
               <text class="action-item" @click.stop="handleDelete(diary.id)">删除</text>
             </view>
           </view>
@@ -63,7 +81,7 @@
       
       <view v-if="filteredDiaries.length === 0" class="empty-state">
         <text class="empty-icon">📖</text>
-        <text>暂无相关日记</text>
+        <text>{{ viewMode === 'drafts' ? '草稿箱为空' : '暂无相关日记' }}</text>
         <view v-if="!token">
           <text>请先登录</text>
           <button @click="goToLogin">前往登录</button>
@@ -88,8 +106,10 @@ export default {
       searchKeyword: '',
       selectedEmotion: '',
       selectedDate: '',
+      viewMode: 'published',
       emotionOptions: ['全部', '开心', '感动', '兴奋', '平静', '忧郁', '思念'],
-      diaries: []
+      publishedDiaries: [],
+      draftDiaries: []
     }
   },
   
@@ -97,13 +117,18 @@ export default {
     token() {
       return this.$store.state.token
     },
+
+    currentDiaries() {
+      return this.viewMode === 'drafts' ? this.draftDiaries : this.publishedDiaries
+    },
+
     filteredDiaries() {
-      let result = [...this.diaries].sort((a, b) => {
-        // 按时间倒序排列
-        return new Date(b.date) - new Date(a.date)
+      let result = [...this.currentDiaries].sort((a, b) => {
+        const left = a.isDraft ? (a.updatedAt || a.createdAt || a.date) : (a.date || a.createdAt)
+        const right = b.isDraft ? (b.updatedAt || b.createdAt || b.date) : (b.date || b.createdAt)
+        return new Date(right || 0) - new Date(left || 0)
       })
       
-      // 搜索过滤
       if (this.searchKeyword) {
         const kw = this.searchKeyword
         result = result.filter((diary) => {
@@ -112,14 +137,12 @@ export default {
         })
       }
       
-      // 情绪过滤
       if (this.selectedEmotion && this.selectedEmotion !== '全部') {
-        result = result.filter(diary => diary.emotion === this.selectedEmotion)
+        result = result.filter((diary) => diary.emotion === this.selectedEmotion)
       }
       
-      // 时间过滤
       if (this.selectedDate) {
-        result = result.filter(diary => diary.date === this.selectedDate)
+        result = result.filter((diary) => diary.date === this.selectedDate)
       }
       
       return result
@@ -131,21 +154,37 @@ export default {
   },
   
   onShow() {
-    // 页面每次显示时重新加载数据
     this.loadDiaryList()
   },
   
   methods: {
+    normalizeDiaryListItem(diary) {
+      return {
+        id: diary.id,
+        title: diary.title || '未命名草稿',
+        location: diary.location || '未填写地点',
+        date: diary.date,
+        updatedAt: diary.updated_at,
+        createdAt: diary.created_at,
+        emotion: diary.emotion || '未设置',
+        content: diary.content || '',
+        coverImage: this.getCoverImage(diary.images),
+        images: diary.images || [],
+        isDraft: !!diary.is_draft
+      }
+    },
+
     contentExcerpt(html) {
       const t = stripHtml(html || '')
-      if (!t) return '…'
+      if (!t) return this.viewMode === 'drafts' ? '草稿内容未填写' : '…'
       if (t.length <= 80) return t
       return `${t.substring(0, 80)}…`
     },
 
     loadDiaryList() {
-      // 检查是否有token
       if (!this.token) {
+        this.publishedDiaries = []
+        this.draftDiaries = []
         uni.showToast({
           title: '请先登录',
           icon: 'none'
@@ -153,53 +192,63 @@ export default {
         return
       }
 
-      // 调用后端获取日记列表接口
-      request({
-        url: config.DIARY_LIST,
-        method: 'GET',
-        header: {
-          'Authorization': 'Bearer ' + this.token
-        }
-      }).then(res => {
-        console.log('日记列表数据:', res); // 添加日志以便调试
-        this.diaries = res.map(diary => ({
-          id: diary.id,
-          title: diary.title,
-          location: diary.location,
-          date: diary.date,
-          emotion: diary.emotion,
-          content: diary.content,
-          coverImage: this.getCoverImage(diary.images),
-          images: diary.images || [] // 保留完整图片数组
-        }))
-        console.log('处理后的日记数据:', this.diaries); // 添加日志以便调试
-      }).catch(err => {
-        console.error('获取日记列表失败:', err)
-        uni.showToast({
-          title: '获取日记列表失败',
-          icon: 'none'
+      Promise.all([
+        request({
+          url: config.DIARY_LIST,
+          method: 'GET',
+          header: {
+            'Authorization': 'Bearer ' + this.token
+          }
         })
+          .then((data) => ({ ok: true, data }))
+          .catch((error) => ({ ok: false, error })),
+        request({
+          url: config.DIARY_DRAFTS,
+          method: 'GET',
+          header: {
+            'Authorization': 'Bearer ' + this.token
+          }
+        })
+          .then((data) => ({ ok: true, data }))
+          .catch((error) => ({ ok: false, error }))
+      ]).then(([publishedResult, draftResult]) => {
+        if (publishedResult.ok) {
+          this.publishedDiaries = (publishedResult.data || []).map((diary) => this.normalizeDiaryListItem(diary))
+        } else {
+          console.error('获取已发布日记失败:', publishedResult.error)
+          this.publishedDiaries = []
+        }
+
+        if (draftResult.ok) {
+          this.draftDiaries = (draftResult.data || []).map((diary) => this.normalizeDiaryListItem(diary))
+        } else {
+          console.error('获取草稿列表失败:', draftResult.error)
+          this.draftDiaries = []
+        }
+
+        if (!publishedResult.ok && !draftResult.ok) {
+          uni.showToast({
+            title: '获取日记列表失败',
+            icon: 'none'
+          })
+        }
       })
     },
     
     getCoverImage(images) {
-      // 检查是否有图片
       if (!images || !Array.isArray(images) || images.length === 0) {
-        return '/static/images/placeholder.svg';
+        return '/static/images/placeholder.svg'
       }
       
-      // 返回第一张图片
-      const firstImage = images[0];
+      const firstImage = images[0]
       if (!firstImage) {
-        return '/static/images/placeholder.svg';
+        return '/static/images/placeholder.svg'
       }
       
-      return firstImage;
+      return firstImage
     },
     
-    handleSearch() {
-      // 搜索处理已在computed中完成
-    },
+    handleSearch() {},
     
     handleEmotionChange(e) {
       this.selectedEmotion = this.emotionOptions[e.detail.value]
@@ -210,6 +259,9 @@ export default {
     },
     
     getEmotionLabel(emotion) {
+      if (emotion === '未设置') {
+        return '待完善'
+      }
       const labels = {
         '开心': '😊',
         '感动': '😢',
@@ -220,9 +272,18 @@ export default {
       }
       return labels[emotion] || emotion
     },
+
+    formatDiaryMeta(diary) {
+      if (diary.isDraft) {
+        return `最近保存 ${this.formatDate(diary.updatedAt || diary.createdAt || diary.date)}`
+      }
+      return this.formatDate(diary.date)
+    },
     
     formatDate(dateString) {
+      if (!dateString) return '时间待定'
       const date = new Date(dateString)
+      if (Number.isNaN(date.getTime())) return '时间待定'
       return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
     },
     
@@ -232,9 +293,13 @@ export default {
       })
     },
     
-    goToDiaryDetail(id) {
+    openDiary(diary) {
+      if (diary.isDraft) {
+        this.handleEdit(diary.id)
+        return
+      }
       uni.navigateTo({
-        url: `/pages/diary/detail?id=${id}`
+        url: `/pages/diary/detail?id=${diary.id}`
       })
     },
     
@@ -250,28 +315,26 @@ export default {
         content: '确定要删除这篇日记吗？',
         success: (res) => {
           if (res.confirm) {
-            // 调用后端删除日记接口
             request({
               url: config.DIARY_DELETE.replace('<int:diary_id>', id),
               method: 'DELETE',
               header: {
                 'Authorization': 'Bearer ' + this.token
               }
-            }).then(res => {
-              if (res.msg === '删除成功') {
+            }).then((resp) => {
+              if (resp.msg === '删除成功') {
                 uni.showToast({
                   title: '删除成功',
                   icon: 'success'
                 })
-                // 重新加载日记列表
                 this.loadDiaryList()
               } else {
                 uni.showToast({
-                  title: res.msg || '删除失败',
+                  title: resp.msg || '删除失败',
                   icon: 'none'
                 })
               }
-            }).catch(err => {
+            }).catch(() => {
               uni.showToast({
                 title: '删除失败',
                 icon: 'none'
@@ -283,13 +346,16 @@ export default {
     },
     
     onImageError(diary) {
-      console.log('图片加载失败:', diary.coverImage);
-      // 图片加载失败时，清除coverImage以显示占位符
-      // 使用Vue.set或者通过索引更新数组元素来确保响应性
-      const index = this.diaries.findIndex(item => item.id === diary.id);
-      if (index !== -1) {
-        this.diaries[index].coverImage = '/static/images/placeholder.svg';
+      const patchCover = (items) => {
+        const index = items.findIndex((item) => item.id === diary.id)
+        if (index !== -1) {
+          items[index].coverImage = '/static/images/placeholder.svg'
+          return true
+        }
+        return false
       }
+      if (patchCover(this.publishedDiaries)) return
+      patchCover(this.draftDiaries)
     },
     
     goToLogin() {
@@ -318,6 +384,28 @@ export default {
   font-weight: bold;
   color: #333;
   text-shadow: 1rpx 1rpx 2rpx rgba(0,0,0,0.1);
+}
+
+.view-switch {
+  display: flex;
+  gap: 16rpx;
+  margin-bottom: 24rpx;
+}
+
+.view-tab {
+  flex: 1;
+  text-align: center;
+  padding: 18rpx 0;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.82);
+  color: #475569;
+  font-size: 26rpx;
+  box-shadow: 0 4rpx 12rpx rgba(15, 23, 42, 0.08);
+}
+
+.view-tab.active {
+  background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%);
+  color: #fff;
 }
 
 .filter-bar {
@@ -390,27 +478,16 @@ export default {
   object-fit: cover;
 }
 
-.diary-image-placeholder {
-  width: 100%;
-  height: 300rpx;
-  background: linear-gradient(135deg, #c9d6ff 0%, #e2e2e2 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.image-icon {
-  font-size: 80rpx;
-}
-
 .diary-content {
   padding: 20rpx;
 }
 
 .diary-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: 10rpx;
   margin-bottom: 15rpx;
 }
 
@@ -418,6 +495,15 @@ export default {
   font-size: 32rpx;
   font-weight: bold;
   color: #333;
+}
+
+.draft-badge {
+  margin-left: auto;
+  padding: 6rpx 16rpx;
+  border-radius: 20rpx;
+  font-size: 22rpx;
+  background: rgba(249, 115, 22, 0.14);
+  color: #c2410c;
 }
 
 .emotion-tag {
@@ -454,6 +540,11 @@ export default {
 .emotion-思念 {
   background-color: #DDA0DD;
   color: #8B008B;
+}
+
+.emotion-未设置 {
+  background-color: #FDE68A;
+  color: #92400E;
 }
 
 .diary-location {
@@ -518,12 +609,12 @@ export default {
 }
 
 .fab:hover {
-  transform: scale(1.05);
+  transform: scale(1.1);
+  box-shadow: 0 6rpx 25rpx rgba(0,122,255,0.4);
 }
 
 .plus-icon {
   font-size: 60rpx;
   color: white;
-  font-weight: bold;
 }
 </style>

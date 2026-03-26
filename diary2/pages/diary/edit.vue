@@ -33,7 +33,7 @@
       </view>
       <view class="coord-hint">
         <text :class="coordsReady ? 'coord-ok' : 'coord-warn'">
-          {{ coordsReady ? '已具备经纬度，可以保存' : '保存前须完成：点「解析为经纬度」或「获取当前位置」' }}
+          {{ coordsReady ? '已具备经纬度，可以发布' : '发布前须完成：点「解析为经纬度」或「获取当前位置」' }}
         </text>
       </view>
     </view>
@@ -255,12 +255,18 @@
     </view>
     
     <view class="form-actions">
-      <button class="save-btn" @click="saveDiary">
-        <text>{{ isEdit ? '更新日记' : '保存日记' }}</text>
-      </button>
-      <button class="cancel-btn" @click="cancelEdit">
-        <text>取消</text>
-      </button>
+      <text class="draft-status">{{ draftStatusText }}</text>
+      <view class="action-row">
+        <button class="draft-btn action-btn" @click="saveDraft()" :disabled="publishSaving || draftSaving">
+          <text>{{ draftSaving ? '草稿保存中...' : '保存草稿' }}</text>
+        </button>
+        <button class="save-btn action-btn" @click="saveDiary" :disabled="publishSaving || draftSaving">
+          <text>{{ publishSaving ? '保存中...' : '保存日记' }}</text>
+        </button>
+        <button class="cancel-btn action-btn" @click="cancelEdit">
+          <text>取消</text>
+        </button>
+      </view>
     </view>
   </view>
 </template>
@@ -270,6 +276,20 @@ import request from '../../utils/request.js'
 import config from '../../api/config.js'
 import { stripHtml } from '../../utils/html.js'
 
+function createEmptyDiaryData() {
+  return {
+    title: '',
+    location: '',
+    date: '',
+    emotion: '',
+    content: '',
+    images: [],
+    videos: [],
+    latitude: null,
+    longitude: null
+  }
+}
+
 export default {
   data() {
     return {
@@ -277,18 +297,12 @@ export default {
       gettingLocation: false,
       geocodingAddress: false,
       gettingSuggestion: false,
+      publishSaving: false,
+      draftSaving: false,
       diaryId: null,
-      diaryData: {
-        title: '',
-        location: '',
-        date: '',
-        emotion: '',
-        content: '',
-        images: [],
-        videos: [],
-        latitude: null,
-        longitude: null
-      },
+      isCurrentDraft: false,
+      lastDraftSavedAt: '',
+      diaryData: createEmptyDiaryData(),
       emotionOptions: [
         { label: '😊 开心', value: '开心' },
         { label: '😢 感动', value: '感动' },
@@ -318,10 +332,27 @@ export default {
         lng >= -180 &&
         lng <= 180
       )
+    },
+
+    draftStatusText() {
+      if (this.publishSaving) {
+        return '日记保存中...'
+      }
+      if (this.draftSaving) {
+        return '草稿保存中...'
+      }
+      if (this.lastDraftSavedAt) {
+        return `最近一次草稿保存：${this.lastDraftSavedAt}`
+      }
+      if (this.isCurrentDraft) {
+        return '当前内容为草稿'
+      }
+      return '点击按钮即可保存草稿'
     }
   },
   
   onLoad(options) {
+    this.diaryData = createEmptyDiaryData()
     if (options.id) {
       this.isEdit = true
       this.diaryId = options.id
@@ -334,6 +365,157 @@ export default {
   },
   
   methods: {
+    createDiarySnapshot(source = this.diaryData) {
+      const next = source || {}
+      return {
+        title: next.title || '',
+        location: next.location || '',
+        date: next.date || '',
+        emotion: next.emotion || '',
+        content: next.content || '',
+        images: Array.isArray(next.images) ? [...next.images] : [],
+        videos: Array.isArray(next.videos)
+          ? next.videos.map((video) => ({
+              url: (video && video.url) || '',
+              thumbnail: (video && video.thumbnail) || ''
+            }))
+          : [],
+        latitude: next.latitude != null ? next.latitude : null,
+        longitude: next.longitude != null ? next.longitude : null
+      }
+    },
+
+    applyDiaryData(source) {
+      this.diaryData = this.createDiarySnapshot(source)
+      this.$nextTick(() => {
+        if (this.editorCtx) {
+          this.editorSetHtml(this.diaryData.content)
+        } else {
+          this._pendingEditorHtml = this.diaryData.content
+        }
+      })
+    },
+
+    formatDraftSavedAt(input) {
+      const dt = input instanceof Date ? input : new Date(input)
+      if (Number.isNaN(dt.getTime())) return ''
+      return `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}:${String(dt.getSeconds()).padStart(2, '0')}`
+    },
+
+    hasMeaningfulDraftData(source = this.diaryData) {
+      const snapshot = this.createDiarySnapshot(source)
+      const plainText = stripHtml(snapshot.content || '').trim()
+      const hasInlineImage = /<img\s/i.test(snapshot.content || '')
+      return Boolean(
+        (snapshot.title || '').trim() ||
+          (snapshot.location || '').trim() ||
+          (snapshot.emotion || '').trim() ||
+          plainText ||
+          hasInlineImage ||
+          (snapshot.images && snapshot.images.length) ||
+          (snapshot.videos && snapshot.videos.length) ||
+          snapshot.latitude != null ||
+          snapshot.longitude != null
+      )
+    },
+
+    async collectEditorSnapshot() {
+      return new Promise((resolve) => {
+        if (!this.editorCtx) {
+          const html = this.diaryData.content || ''
+          resolve({
+            html,
+            text: stripHtml(html)
+          })
+          return
+        }
+
+        this.editorCtx.getContents({
+          success: (res) => {
+            const html = (res && res.html) || this.diaryData.content || ''
+            resolve({
+              html,
+              text: (res && res.text) || stripHtml(html)
+            })
+          },
+          fail: () => {
+            const html = this.diaryData.content || ''
+            resolve({
+              html,
+              text: stripHtml(html)
+            })
+          }
+        })
+      })
+    },
+
+    async buildRequestPayload({ isDraft }) {
+      const editorSnapshot = await this.collectEditorSnapshot()
+      const html = editorSnapshot.html || this.diaryData.content || ''
+      this.diaryData.content = html
+      return {
+        title: this.diaryData.title,
+        location: this.diaryData.location,
+        date: this.diaryData.date,
+        emotion: this.diaryData.emotion,
+        content: html,
+        images: [...this.diaryData.images],
+        videos: this.diaryData.videos.map((video) => ({
+          url: video.url,
+          thumbnail: video.thumbnail
+        })),
+        latitude: this.diaryData.latitude,
+        longitude: this.diaryData.longitude,
+        is_draft: isDraft,
+        _editorText: (editorSnapshot.text || '').trim()
+      }
+    },
+
+    async runDiaryRequest(payload) {
+      const url = this.isEdit
+        ? config.DIARY_UPDATE.replace('<int:diary_id>', this.diaryId)
+        : config.DIARY_CREATE
+      const method = this.isEdit ? 'PUT' : 'POST'
+      const { _editorText, ...requestPayload } = payload
+      return request({
+        url,
+        method,
+        data: requestPayload,
+        header: {
+          Authorization: 'Bearer ' + this.$store.state.token
+        }
+      })
+    },
+
+    validatePublishPayload(payload) {
+      if (!(payload.title || '').trim()) {
+        return '请输入标题'
+      }
+      if (!(payload.location || '').trim()) {
+        return '请输入地点'
+      }
+      if (
+        !this.coordsReady ||
+        payload.latitude == null ||
+        payload.longitude == null
+      ) {
+        return '请先点「解析为经纬度」或「获取当前位置」'
+      }
+      if (!payload.date) {
+        return '请选择日期'
+      }
+      if (!(payload.emotion || '').trim()) {
+        return '请选择心情'
+      }
+
+      const plainText = (payload._editorText || '').trim() || stripHtml(payload.content || '').trim()
+      const hasImg = /<img\s/i.test(payload.content || '')
+      if (!plainText && !hasImg) {
+        return '请输入正文或插入图片'
+      }
+      return ''
+    },
+
     onEditorReady() {
       const q = uni.createSelectorQuery().in(this)
       q.select('#diary-editor')
@@ -459,7 +641,8 @@ export default {
       return this.uploadMedia(filePath, 'image').then((res) => res.url)
     },
 
-    async uploadPendingDiaryMedia() {
+    async uploadPendingDiaryMedia(options = {}) {
+      const { showProgress = true } = options
       const nextImages = []
       for (let i = 0; i < this.diaryData.images.length; i += 1) {
         const image = this.diaryData.images[i]
@@ -467,7 +650,9 @@ export default {
           nextImages.push(image)
           continue
         }
-        uni.showLoading({ title: `上传图片 ${i + 1}/${this.diaryData.images.length}`, mask: true })
+        if (showProgress) {
+          uni.showLoading({ title: `上传图片 ${i + 1}/${this.diaryData.images.length}`, mask: true })
+        }
         const uploaded = await this.uploadMedia(image, 'image')
         nextImages.push(uploaded.url)
       }
@@ -479,13 +664,17 @@ export default {
         let thumbnailUrl = video.thumbnail || ''
 
         if (!this.isRemoteMediaUrl(videoUrl)) {
-          uni.showLoading({ title: `上传视频 ${i + 1}/${this.diaryData.videos.length}`, mask: true })
+          if (showProgress) {
+            uni.showLoading({ title: `上传视频 ${i + 1}/${this.diaryData.videos.length}`, mask: true })
+          }
           const uploadedVideo = await this.uploadMedia(videoUrl, 'video')
           videoUrl = uploadedVideo.url
         }
 
         if (thumbnailUrl && !this.isRemoteMediaUrl(thumbnailUrl)) {
-          uni.showLoading({ title: `上传封面 ${i + 1}/${this.diaryData.videos.length}`, mask: true })
+          if (showProgress) {
+            uni.showLoading({ title: `上传封面 ${i + 1}/${this.diaryData.videos.length}`, mask: true })
+          }
           const uploadedThumb = await this.uploadMedia(thumbnailUrl, 'image')
           thumbnailUrl = uploadedThumb.url
         }
@@ -613,23 +802,17 @@ export default {
           'Authorization': 'Bearer ' + this.$store.state.token
         }
       }).then(res => {
-        this.diaryData = {
-          title: res.title,
-          location: res.location,
-          date: res.date,
-          emotion: res.emotion,
+        this.isCurrentDraft = !!res.is_draft
+        this.applyDiaryData({
+          title: res.title || '',
+          location: res.location || '',
+          date: res.date || '',
+          emotion: res.emotion || '',
           content: res.content || '',
           images: res.images || [],
           videos: res.videos || [],
-          latitude: res.latitude || null,
-          longitude: res.longitude || null
-        }
-        this.$nextTick(() => {
-          if (this.editorCtx) {
-            this.editorSetHtml(this.diaryData.content)
-          } else {
-            this._pendingEditorHtml = this.diaryData.content
-          }
+          latitude: res.latitude != null ? res.latitude : null,
+          longitude: res.longitude != null ? res.longitude : null
         })
       }).catch(err => {
         uni.showToast({
@@ -809,126 +992,129 @@ export default {
       }
     },
     
-    saveDiary() {
-      if (!this.diaryData.title) {
+    async saveDraft() {
+      if (this.publishSaving || this.draftSaving) {
         uni.showToast({
-          title: '请输入标题',
-          icon: 'none'
-        })
-        return
-      }
-      
-      if (!this.diaryData.location) {
-        uni.showToast({
-          title: '请输入地点',
+          title: '保存进行中',
           icon: 'none'
         })
         return
       }
 
-      if (!this.coordsReady) {
+      if (!this.$store.state.token) {
         uni.showToast({
-          title: '请先点「解析为经纬度」或「获取当前位置」',
-          icon: 'none'
-        })
-        return
-      }
-      
-      if (!this.diaryData.date) {
-        uni.showToast({
-          title: '请选择日期',
-          icon: 'none'
-        })
-        return
-      }
-      
-      if (!this.diaryData.emotion) {
-        uni.showToast({
-          title: '请选择心情',
-          icon: 'none'
-        })
-        return
-      }
-      
-      if (!this.editorCtx) {
-        uni.showToast({
-          title: '编辑器未就绪，请稍候',
+          title: '请先登录',
           icon: 'none'
         })
         return
       }
 
-      this.editorCtx.getContents({
-        success: (r) => {
-          const html = (r && r.html) || ''
-          const text = ((r && r.text) || '').trim()
-          const hasImg = /<img\s/i.test(html)
-          if (!text && !hasImg) {
-            uni.showToast({
-              title: '请输入正文或插入图片',
-              icon: 'none'
-            })
-            return
-          }
-          this.diaryData.content = html
-          this.submitDiaryRequest()
-        },
-        fail: () => {
-          const fallback = this.diaryData.content || ''
-          if (!stripHtml(fallback) && !/<img\s/i.test(fallback)) {
-            uni.showToast({
-              title: '请输入正文或插入图片',
-              icon: 'none'
-            })
-            return
-          }
-          this.submitDiaryRequest()
+      try {
+        let payload = await this.buildRequestPayload({ isDraft: true })
+        if (!this.hasMeaningfulDraftData(payload)) {
+          uni.showToast({
+            title: '当前没有可保存内容',
+            icon: 'none'
+          })
+          return
         }
-      })
+
+        this.draftSaving = true
+        uni.showLoading({
+          title: '草稿保存中...',
+          mask: true
+        })
+
+        await this.uploadPendingDiaryMedia({ showProgress: true })
+        payload = await this.buildRequestPayload({ isDraft: true })
+        const response = await this.runDiaryRequest(payload)
+
+        if (response && response.diary_id) {
+          this.diaryId = response.diary_id
+          this.isEdit = true
+        }
+        this.isCurrentDraft = true
+        this.lastDraftSavedAt = this.formatDraftSavedAt(new Date())
+        uni.hideLoading()
+        uni.showToast({
+          title: response.msg || '草稿已保存',
+          icon: 'success'
+        })
+      } catch (err) {
+        console.error('保存草稿失败:', err)
+        uni.hideLoading()
+        const msg =
+          (err && err.data && err.data.msg) ||
+          err.message ||
+          '草稿保存失败'
+        uni.showToast({
+          title: msg,
+          icon: 'none'
+        })
+      } finally {
+        this.draftSaving = false
+      }
     },
 
-    async submitDiaryRequest() {
-      const url = this.isEdit ? config.DIARY_UPDATE.replace('<int:diary_id>', this.diaryId) : config.DIARY_CREATE
-      const method = this.isEdit ? 'PUT' : 'POST'
-
-      const runSave = () =>
-        request({
-          url: url,
-          method: method,
-          data: {
-            title: this.diaryData.title,
-            location: this.diaryData.location,
-            date: this.diaryData.date,
-            emotion: this.diaryData.emotion,
-            content: this.diaryData.content,
-            images: this.diaryData.images,
-            videos: this.diaryData.videos,
-            latitude: this.diaryData.latitude,
-            longitude: this.diaryData.longitude
-          },
-          header: {
-            'Authorization': 'Bearer ' + this.$store.state.token
-          }
+    async saveDiary() {
+      if (this.publishSaving || this.draftSaving) {
+        uni.showToast({
+          title: '保存进行中',
+          icon: 'none'
         })
+        return
+      }
 
+      if (!this.$store.state.token) {
+        uni.showToast({
+          title: '请先登录',
+          icon: 'none'
+        })
+        return
+      }
+
+      let payload = null
+      try {
+        payload = await this.buildRequestPayload({ isDraft: false })
+      } catch (err) {
+        uni.showToast({
+          title: '读取编辑内容失败',
+          icon: 'none'
+        })
+        return
+      }
+
+      const validationMessage = this.validatePublishPayload(payload)
+      if (validationMessage) {
+        uni.showToast({
+          title: validationMessage,
+          icon: 'none'
+        })
+        return
+      }
+
+      this.publishSaving = true
       uni.showLoading({
         title: '准备上传媒体...',
         mask: true
       })
 
       try {
-        await this.uploadPendingDiaryMedia()
+        await this.uploadPendingDiaryMedia({ showProgress: true })
         uni.showLoading({
-          title: '保存中...',
+          title: '发布中...',
           mask: true
         })
 
-        const res = await runSave()
+        payload = await this.buildRequestPayload({ isDraft: false })
+        const response = await this.runDiaryRequest(payload)
         uni.hideLoading()
+        this.isCurrentDraft = false
+        this.lastDraftSavedAt = ''
 
-        if (res.msg === '创建成功' || res.msg === '更新成功' || res.diary_id) {
+        if (response.msg === '创建成功' || response.msg === '更新成功' || response.diary_id) {
           uni.showToast({
-            title: this.isEdit ? '更新成功' : '创建成功',
+            title: this.isEdit ? '保存成功' : '创建成功',
             icon: 'success'
           })
 
@@ -937,32 +1123,23 @@ export default {
           }, 1500)
         } else {
           uni.showToast({
-            title: res.msg || '保存失败',
+            title: response.msg || '发布失败',
             icon: 'none'
           })
         }
       } catch (err) {
         uni.hideLoading()
-        console.error('保存日记失败:', err)
-        if (err && err.data && (err.data.msg === '创建成功' || err.data.msg === '更新成功')) {
-          uni.showToast({
-            title: this.isEdit ? '更新成功' : '创建成功',
-            icon: 'success'
-          })
-
-          setTimeout(() => {
-            uni.navigateBack()
-          }, 1500)
-        } else {
-          const msg =
-            (err && err.data && err.data.msg) ||
-            err.message ||
-            '保存失败'
-          uni.showToast({
-            title: msg,
-            icon: 'none'
-          })
-        }
+        console.error('发布日记失败:', err)
+        const msg =
+          (err && err.data && err.data.msg) ||
+          err.message ||
+          '发布失败'
+        uni.showToast({
+          title: msg,
+          icon: 'none'
+        })
+      } finally {
+        this.publishSaving = false
       }
     },
     
@@ -976,6 +1153,7 @@ export default {
 <style scoped>
 .container {
   padding: 30rpx;
+  padding-bottom: calc(260rpx + env(safe-area-inset-bottom));
   background: linear-gradient(135deg, #f5f7fa 0%, #e4edf9 100%);
   min-height: 100vh;
 }
@@ -1323,20 +1501,50 @@ export default {
 }
 
 .form-actions {
+  position: fixed;
+  left: 24rpx;
+  right: 24rpx;
+  bottom: calc(20rpx + env(safe-area-inset-bottom));
+  z-index: 30;
   display: flex;
-  justify-content: space-between;
-  padding-bottom: 30rpx;
+  flex-direction: column;
+  gap: 16rpx;
+  padding: 20rpx;
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 12rpx 36rpx rgba(15, 23, 42, 0.14);
 }
 
-.save-btn, .cancel-btn {
+.draft-status {
+  font-size: 24rpx;
+  color: #6b7280;
+  text-align: center;
+}
+
+.action-row {
+  display: flex;
+  gap: 16rpx;
+}
+
+.save-btn, .cancel-btn, .draft-btn {
   flex: 1;
   height: 100rpx;
   border: none;
   border-radius: 15rpx;
   font-size: 32rpx;
-  margin: 0 10rpx;
   box-shadow: 0 4rpx 10rpx rgba(0,0,0,0.1);
   transition: all 0.3s ease;
+}
+
+.action-btn {
+  margin: 0;
+  height: 88rpx;
+  font-size: 28rpx;
+}
+
+.draft-btn {
+  background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
+  color: white;
 }
 
 .save-btn {
@@ -1349,7 +1557,12 @@ export default {
   color: #333;
 }
 
-.save-btn:hover, .cancel-btn:hover {
+.draft-btn[disabled], .save-btn[disabled], .cancel-btn[disabled] {
+  opacity: 0.7;
+  box-shadow: none;
+}
+
+.draft-btn:hover, .save-btn:hover, .cancel-btn:hover {
   transform: translateY(-5rpx);
   box-shadow: 0 8rpx 15rpx rgba(0,0,0,0.15);
 }

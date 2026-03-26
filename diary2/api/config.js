@@ -12,6 +12,7 @@ export default {
   
   // 日记相关接口
   DIARY_LIST: BASE_URL + '/diary/list',
+  DIARY_DRAFTS: BASE_URL + '/diary/drafts',
   DIARY_CREATE: BASE_URL + '/diary/create',
   DIARY_UPDATE: BASE_URL + '/diary/update/<int:diary_id>',
   DIARY_DELETE: BASE_URL + '/diary/delete/<int:diary_id>',

@@ -29,6 +29,13 @@ class Diary(db.Model):
     
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=True, comment='日记ID')
     user_id = db.Column(db.BigInteger, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, comment='用户ID')
+    is_draft = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default=db.false(),
+        comment='是否草稿',
+    )
     title = db.Column(db.String(200), nullable=False, comment='日记标题')
     location = db.Column(db.String(200), nullable=False, comment='地点')
     latitude = db.Column(db.DECIMAL(10, 8), nullable=True, comment='纬度')

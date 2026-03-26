@@ -41,6 +41,22 @@ def _parse_date_value(value):
     raise ValueError("date 字段格式错误")
 
 
+def _parse_bool_value(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"1", "true", "yes", "y", "on"}:
+            return True
+        if text in {"0", "false", "no", "n", "off", ""}:
+            return False
+    raise ValueError("is_draft 字段格式错误")
+
+
 def _is_remote_url(value):
     return isinstance(value, str) and value.startswith(("http://", "https://"))
 
@@ -94,6 +110,7 @@ def _serialize_diary(diary):
     return {
         "id": diary.id,
         "user_id": diary.user_id,
+        "is_draft": bool(diary.is_draft),
         "title": diary.title,
         "location": diary.location,
         "latitude": float(diary.latitude) if diary.latitude else None,
@@ -104,7 +121,87 @@ def _serialize_diary(diary):
         "images": [image.image_url for image in diary.images],
         "videos": [{"url": video.video_url, "thumbnail": video.thumbnail_url} for video in diary.videos],
         "created_at": diary.created_at.isoformat() if diary.created_at else None,
+        "updated_at": diary.updated_at.isoformat() if diary.updated_at else None,
     }
+
+
+def _normalize_diary_payload(data, existing=None):
+    is_draft = _parse_bool_value(
+        data.get("is_draft"),
+        default=bool(existing.is_draft) if existing is not None else False,
+    )
+
+    payload = {
+        "is_draft": is_draft,
+        "title": existing.title if existing is not None else "",
+        "location": existing.location if existing is not None else "",
+        "emotion": existing.emotion if existing is not None else "",
+        "content": existing.content if existing is not None else "",
+        "date": existing.date if existing is not None else None,
+        "latitude": float(existing.latitude) if existing is not None and existing.latitude is not None else None,
+        "longitude": float(existing.longitude) if existing is not None and existing.longitude is not None else None,
+        "images": None if existing is not None else [],
+        "videos": None if existing is not None else [],
+    }
+
+    if "title" in data or existing is None:
+        payload["title"] = (data.get("title") or "").strip()
+    if "location" in data or existing is None:
+        payload["location"] = (data.get("location") or "").strip()
+    if "emotion" in data or existing is None:
+        payload["emotion"] = (data.get("emotion") or "").strip()
+
+    if "content" in data or existing is None:
+        payload["content"] = sanitize_diary_html(data.get("content"))
+
+    raw_date = data.get("date") if "date" in data else payload["date"]
+    if raw_date is None or (isinstance(raw_date, str) and not raw_date.strip()):
+        if is_draft:
+            payload["date"] = payload["date"] or date.today()
+        else:
+            payload["date"] = payload["date"]
+    else:
+        payload["date"] = _parse_date_value(raw_date)
+
+    if "latitude" in data or "longitude" in data or existing is None:
+        parsed_coords = _parse_client_coords(data.get("latitude"), data.get("longitude"))
+        if parsed_coords:
+            payload["latitude"], payload["longitude"] = parsed_coords
+        elif "latitude" in data or "longitude" in data:
+            payload["latitude"], payload["longitude"] = None, None
+
+    if "images" in data or existing is None:
+        payload["images"] = _normalize_images(data.get("images"))
+    if "videos" in data or existing is None:
+        payload["videos"] = _normalize_videos(data.get("videos"))
+
+    return payload
+
+
+def _validate_publish_payload(payload):
+    missing = []
+    if not payload["title"]:
+        missing.append("title")
+    if not payload["location"]:
+        missing.append("location")
+    if not payload["date"]:
+        missing.append("date")
+    if not payload["emotion"]:
+        missing.append("emotion")
+    if missing:
+        return jsonify({"msg": f"缺少必填字段: {', '.join(missing)}"}), 400
+
+    if diary_html_is_effectively_empty(payload["content"]):
+        return jsonify({"msg": "内容不能为空"}), 400
+
+    if payload["latitude"] is None or payload["longitude"] is None:
+        return jsonify(
+            {
+                "msg": "请先在前端点击「解析为经纬度」或使用「获取当前位置」，再保存日记",
+            }
+        ), 400
+
+    return None
 
 @diary_bp.route('/list', methods=['GET'])
 @jwt_required()
@@ -117,12 +214,30 @@ def get_diary_list():
             selectinload(Diary.images),
             selectinload(Diary.videos),
         )
-        .filter_by(user_id=current_user_id)
+        .filter_by(user_id=current_user_id, is_draft=False)
         .order_by(Diary.created_at.desc())
         .all()
     )
     
     return jsonify([_serialize_diary(diary) for diary in user_diaries]), 200
+
+
+@diary_bp.route('/drafts', methods=['GET'])
+@jwt_required()
+def get_diary_drafts():
+    current_user_id = int(get_jwt_identity())
+
+    draft_diaries = (
+        Diary.query.options(
+            selectinload(Diary.images),
+            selectinload(Diary.videos),
+        )
+        .filter_by(user_id=current_user_id, is_draft=True)
+        .order_by(Diary.updated_at.desc(), Diary.id.desc())
+        .all()
+    )
+
+    return jsonify([_serialize_diary(diary) for diary in draft_diaries]), 200
 
 @diary_bp.route('/detail/<int:diary_id>', methods=['GET'])
 @jwt_required()
@@ -149,51 +264,39 @@ def get_diary_detail(diary_id):
 def create_diary():
     current_user_id = int(get_jwt_identity())
     data = request.get_json() or {}
-    required_fields = ["title", "location", "date", "emotion", "content"]
-    missing = [f for f in required_fields if not data.get(f)]
-    if missing:
-        return jsonify({"msg": f"缺少必填字段: {', '.join(missing)}"}), 400
 
     try:
-        parsed_date = _parse_date_value(data.get("date"))
+        payload = _normalize_diary_payload(data)
+    except ValueError as exc:
+        msg = str(exc)
+        if msg == "date 字段格式错误":
+            return jsonify({"msg": "date 字段格式错误，需为 YYYY-MM-DD 或 ISO 时间"}), 400
+        return jsonify({"msg": msg}), 400
     except Exception:
         return jsonify({"msg": "date 字段格式错误，需为 YYYY-MM-DD 或 ISO 时间"}), 400
 
-    content_html = sanitize_diary_html(data.get("content"))
-    if diary_html_is_effectively_empty(content_html):
-        return jsonify({"msg": "内容不能为空"}), 400
-
-    try:
-        images = _normalize_images(data.get('images'))
-        videos = _normalize_videos(data.get('videos'))
-    except ValueError as exc:
-        return jsonify({"msg": str(exc)}), 400
-
-    parsed = _parse_client_coords(data.get("latitude"), data.get("longitude"))
-    if not parsed:
-        return jsonify(
-            {
-                "msg": "请先在前端点击「解析为经纬度」或使用「获取当前位置」，再保存日记",
-            }
-        ), 400
-    la, lo = parsed
+    if not payload["is_draft"]:
+        invalid = _validate_publish_payload(payload)
+        if invalid:
+            return invalid
 
     # 创建新日记（经纬度仅接受客户端解析/定位结果，避免在保存接口内再调地图导致 macOS 下 worker 不稳定）
     new_diary = Diary(
         user_id=current_user_id,
-        title=data.get('title'),
-        location=data.get('location'),
-        latitude=la,
-        longitude=lo,
-        date=parsed_date,
-        emotion=data.get('emotion'),
-        content=content_html
+        is_draft=payload["is_draft"],
+        title=payload["title"],
+        location=payload["location"],
+        latitude=payload["latitude"],
+        longitude=payload["longitude"],
+        date=payload["date"],
+        emotion=payload["emotion"],
+        content=payload["content"],
     )
     db.session.add(new_diary)
     db.session.flush()
     
     # 处理图片
-    for i, image_url in enumerate(images):
+    for i, image_url in enumerate(payload["images"]):
         diary_image = DiaryImage(
             diary_id=new_diary.id,
             image_url=image_url,
@@ -202,7 +305,7 @@ def create_diary():
         db.session.add(diary_image)
     
     # 处理视频
-    for i, video_data in enumerate(videos):
+    for i, video_data in enumerate(payload["videos"]):
         diary_video = DiaryVideo(
             diary_id=new_diary.id,
             video_url=video_data.get('url'),
@@ -213,7 +316,13 @@ def create_diary():
     
     db.session.commit()
     
-    return jsonify({"msg": "创建成功", "diary_id": new_diary.id}), 201
+    return jsonify(
+        {
+            "msg": "草稿保存成功" if payload["is_draft"] else "创建成功",
+            "diary_id": new_diary.id,
+            "is_draft": payload["is_draft"],
+        }
+    ), 201
 
 @diary_bp.route('/update/<int:diary_id>', methods=['PUT'])
 @jwt_required()
@@ -228,38 +337,34 @@ def update_diary(diary_id):
         return jsonify({"msg": "日记不存在"}), 404
 
     try:
-        images = _normalize_images(data.get('images')) if 'images' in data else None
-        videos = _normalize_videos(data.get('videos')) if 'videos' in data else None
+        payload = _normalize_diary_payload(data, existing=diary)
     except ValueError as exc:
-        return jsonify({"msg": str(exc)}), 400
-    
-    # 更新日记
-    diary.title = data.get('title', diary.title)
-    diary.location = data.get("location", diary.location)
-    parsed = _parse_client_coords(data.get("latitude"), data.get("longitude"))
-    if not parsed:
-        return jsonify(
-            {
-                "msg": "请先在前端点击「解析为经纬度」或使用「获取当前位置」，再保存日记",
-            }
-        ), 400
-    diary.latitude, diary.longitude = parsed
-    if 'date' in data:
-        try:
-            diary.date = _parse_date_value(data.get('date'))
-        except Exception:
+        msg = str(exc)
+        if msg == "date 字段格式错误":
             return jsonify({"msg": "date 字段格式错误，需为 YYYY-MM-DD 或 ISO 时间"}), 400
-    diary.emotion = data.get('emotion', diary.emotion)
-    if "content" in data:
-        content_html = sanitize_diary_html(data.get("content"))
-        if diary_html_is_effectively_empty(content_html):
-            return jsonify({"msg": "内容不能为空"}), 400
-        diary.content = content_html
+        return jsonify({"msg": msg}), 400
+    except Exception:
+        return jsonify({"msg": "date 字段格式错误，需为 YYYY-MM-DD 或 ISO 时间"}), 400
+
+    if not payload["is_draft"]:
+        invalid = _validate_publish_payload(payload)
+        if invalid:
+            return invalid
+
+    # 更新日记
+    diary.is_draft = payload["is_draft"]
+    diary.title = payload["title"]
+    diary.location = payload["location"]
+    diary.latitude = payload["latitude"]
+    diary.longitude = payload["longitude"]
+    diary.date = payload["date"]
+    diary.emotion = payload["emotion"]
+    diary.content = payload["content"]
     
-    if images is not None:
+    if payload["images"] is not None:
         # 更新图片（先删除再重新添加）
         DiaryImage.query.filter_by(diary_id=diary_id).delete()
-        for i, image_url in enumerate(images):
+        for i, image_url in enumerate(payload["images"]):
             diary_image = DiaryImage(
                 diary_id=diary.id,
                 image_url=image_url,
@@ -267,10 +372,10 @@ def update_diary(diary_id):
             )
             db.session.add(diary_image)
     
-    if videos is not None:
+    if payload["videos"] is not None:
         # 更新视频（先删除再重新添加）
         DiaryVideo.query.filter_by(diary_id=diary_id).delete()
-        for i, video_data in enumerate(videos):
+        for i, video_data in enumerate(payload["videos"]):
             diary_video = DiaryVideo(
                 diary_id=diary.id,
                 video_url=video_data.get('url'),
@@ -281,7 +386,13 @@ def update_diary(diary_id):
     
     db.session.commit()
     
-    return jsonify({"msg": "更新成功"}), 200
+    return jsonify(
+        {
+            "msg": "草稿保存成功" if payload["is_draft"] else "更新成功",
+            "diary_id": diary.id,
+            "is_draft": payload["is_draft"],
+        }
+    ), 200
 
 @diary_bp.route('/delete/<int:diary_id>', methods=['DELETE'])
 @jwt_required()

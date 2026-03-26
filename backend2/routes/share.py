@@ -24,6 +24,8 @@ def generate_share():
     
     if diary is None:
         return jsonify({"msg": "日记不存在"}), 404
+    if diary.is_draft:
+        return jsonify({"msg": "草稿暂不支持分享，请先发布"}), 400
     
     # 生成分享链接
     share_token = str(uuid.uuid4())
@@ -68,6 +70,8 @@ def get_share(token):
     
     if diary is None:
         return jsonify({"msg": "日记不存在"}), 404
+    if diary.is_draft:
+        return jsonify({"msg": "分享内容不存在"}), 404
     
     # 返回公开的日记信息（不包含敏感信息）
     public_diary = {

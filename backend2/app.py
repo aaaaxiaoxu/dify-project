@@ -3,6 +3,7 @@ import sys
 import locale
 from datetime import datetime
 from dotenv import load_dotenv
+from sqlalchemy import inspect, text
 
 # 设置默认编码为utf-8
 if sys.version_info[0] == 3:
@@ -25,6 +26,34 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 from extensions import db, jwt, dify_client
 from config import config
+
+
+def _ensure_diary_is_draft_column():
+    inspector = inspect(db.engine)
+    if not inspector.has_table('diaries'):
+        return
+
+    columns = {column["name"] for column in inspector.get_columns('diaries')}
+    if 'is_draft' in columns:
+        return
+
+    dialect = db.engine.dialect.name
+    if dialect == 'mysql':
+        ddl = (
+            "ALTER TABLE diaries "
+            "ADD COLUMN is_draft BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否草稿'"
+        )
+    else:
+        ddl = "ALTER TABLE diaries ADD COLUMN is_draft BOOLEAN NOT NULL DEFAULT 0"
+
+    try:
+        with db.engine.begin() as conn:
+            conn.execute(text(ddl))
+    except Exception:
+        inspector = inspect(db.engine)
+        columns = {column["name"] for column in inspector.get_columns('diaries')}
+        if 'is_draft' not in columns:
+            raise
 
 def create_app(config_name='default'):
     app = Flask(__name__)
@@ -57,5 +86,6 @@ def create_app(config_name='default'):
     # 启动时自动补建缺失数据表（不会删除已有表和数据）
     with app.app_context():
         db.create_all()
+        _ensure_diary_is_draft_column()
     
     return app

@@ -19,7 +19,7 @@ def get_trajectory():
     
     # 按时间正序，便于前端直接连线成「旅程」
     user_diaries = (
-        Diary.query.filter_by(user_id=current_user_id)
+        Diary.query.filter_by(user_id=current_user_id, is_draft=False)
         .order_by(Diary.date.asc(), Diary.id.asc())
         .all()
     )
@@ -42,7 +42,7 @@ def get_trajectory():
 def get_map_stats():
     current_user_id = int(get_jwt_identity())
     
-    user_diaries = Diary.query.filter_by(user_id=current_user_id).all()
+    user_diaries = Diary.query.filter_by(user_id=current_user_id, is_draft=False).all()
 
     unique_locations = unique_location_strings(user_diaries)
     city_count = len(unique_locations)
@@ -63,7 +63,7 @@ def get_map_detail():
     current_user_id = int(get_jwt_identity())
     
     # 获取当前用户的所有日记
-    user_diaries = Diary.query.filter_by(user_id=current_user_id).order_by(Diary.date.desc()).all()
+    user_diaries = Diary.query.filter_by(user_id=current_user_id, is_draft=False).order_by(Diary.date.desc()).all()
     
     # 构建详细数据
     detail_data = {
