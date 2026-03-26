@@ -55,6 +55,35 @@ def _ensure_diary_is_draft_column():
         if 'is_draft' not in columns:
             raise
 
+
+def _ensure_user_admin_columns():
+    """自动补建 users 表的 is_admin 和 is_frozen 列"""
+    inspector = inspect(db.engine)
+    if not inspector.has_table('users'):
+        return
+
+    columns = {column["name"] for column in inspector.get_columns('users')}
+    dialect = db.engine.dialect.name
+
+    for col_name, comment in [('is_admin', '是否管理员'), ('is_frozen', '是否冻结')]:
+        if col_name in columns:
+            continue
+        if dialect == 'mysql':
+            ddl = (
+                f"ALTER TABLE users "
+                f"ADD COLUMN {col_name} BOOLEAN NOT NULL DEFAULT FALSE COMMENT '{comment}'"
+            )
+        else:
+            ddl = f"ALTER TABLE users ADD COLUMN {col_name} BOOLEAN NOT NULL DEFAULT 0"
+        try:
+            with db.engine.begin() as conn:
+                conn.execute(text(ddl))
+        except Exception:
+            inspector = inspect(db.engine)
+            columns = {column["name"] for column in inspector.get_columns('users')}
+            if col_name not in columns:
+                raise
+
 def create_app(config_name='default'):
     app = Flask(__name__)
     app.config.from_object(config[config_name])
@@ -76,6 +105,7 @@ def create_app(config_name='default'):
     from routes.share import share_bp
     from routes.file import file_bp
     from routes.stats import stats_bp
+    from routes.admin import admin_bp
     
     app.register_blueprint(user_bp, url_prefix='/api/user')
     app.register_blueprint(diary_bp, url_prefix='/api/diary')
@@ -84,10 +114,12 @@ def create_app(config_name='default'):
     app.register_blueprint(share_bp, url_prefix='/api/share')
     app.register_blueprint(file_bp, url_prefix='/api/file')
     app.register_blueprint(stats_bp, url_prefix='/api/stats')
+    app.register_blueprint(admin_bp, url_prefix='/api/admin')
 
     # 启动时自动补建缺失数据表（不会删除已有表和数据）
     with app.app_context():
         db.create_all()
         _ensure_diary_is_draft_column()
+        _ensure_user_admin_columns()
     
     return app

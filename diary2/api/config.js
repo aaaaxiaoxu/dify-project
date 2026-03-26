@@ -44,5 +44,13 @@ export default {
   
   // 统计分析接口
   STATS_EMOTION_DISTRIBUTION: BASE_URL + '/stats/emotion-distribution',
-  STATS_EMOTION_TREND: BASE_URL + '/stats/emotion-trend'
+  STATS_EMOTION_TREND: BASE_URL + '/stats/emotion-trend',
+  
+  // 管理员相关接口
+  ADMIN_UPGRADE: BASE_URL + '/admin/upgrade',
+  ADMIN_CHECK: BASE_URL + '/admin/check',
+  ADMIN_USERS: BASE_URL + '/admin/users',
+  ADMIN_DIARIES: BASE_URL + '/admin/diaries',
+  ADMIN_FREEZE_USER: BASE_URL + '/admin/users/',
+  ADMIN_DELETE_DIARY: BASE_URL + '/admin/diaries/'
 }

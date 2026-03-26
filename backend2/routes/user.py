@@ -53,6 +53,10 @@ def login():
     if user is None:
         return jsonify({"msg": "用户名或密码错误"}), 401
     
+    # 检查用户是否被冻结
+    if user.is_frozen:
+        return jsonify({"msg": "您的账号已被冻结，请联系管理员"}), 403
+    
     # 创建访问令牌
     access_token = create_access_token(identity=str(user.id))
     
@@ -62,7 +66,8 @@ def login():
             "id": user.id,
             "username": user.username,
             "nickname": user.nickname,
-            "phone": user.phone
+            "phone": user.phone,
+            "is_admin": user.is_admin
         }
     }), 200
 
@@ -81,5 +86,6 @@ def get_profile():
         "id": user.id,
         "username": user.username,
         "nickname": user.nickname,
-        "phone": user.phone
+        "phone": user.phone,
+        "is_admin": user.is_admin
     }), 200

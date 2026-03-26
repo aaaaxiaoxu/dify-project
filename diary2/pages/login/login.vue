@@ -105,6 +105,13 @@ export default {
           // 保存token到store和本地存储
           this.$store.commit('SET_TOKEN', res.access_token)
           
+          // 保存管理员状态
+          if (res.user && res.user.is_admin) {
+            this.$store.commit('SET_IS_ADMIN', true)
+          } else {
+            this.$store.commit('SET_IS_ADMIN', false)
+          }
+          
           // 跳转到首页
           setTimeout(() => {
             uni.switchTab({

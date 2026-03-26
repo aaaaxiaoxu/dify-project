@@ -5,6 +5,7 @@ const store = createStore({
   state: {
     userInfo: null,
     token: uni.getStorageSync('token') || '', // 初始化时从本地存储获取token
+    isAdmin: uni.getStorageSync('isAdmin') || false, // 管理员状态
     diaryList: [],
     currentDiary: null
   },
@@ -21,6 +22,14 @@ const store = createStore({
         console.error('Save token error:', e)
       }
     },
+    SET_IS_ADMIN(state, isAdmin) {
+      state.isAdmin = isAdmin
+      try {
+        uni.setStorageSync('isAdmin', isAdmin)
+      } catch (e) {
+        console.error('Save isAdmin error:', e)
+      }
+    },
     SET_DIARY_LIST(state, diaryList) {
       state.diaryList = diaryList
     },
@@ -35,6 +44,9 @@ const store = createStore({
     setToken({ commit }, token) {
       commit('SET_TOKEN', token)
     },
+    setIsAdmin({ commit }, isAdmin) {
+      commit('SET_IS_ADMIN', isAdmin)
+    },
     setDiaryList({ commit }, diaryList) {
       commit('SET_DIARY_LIST', diaryList)
     },
@@ -45,6 +57,7 @@ const store = createStore({
   getters: {
     isLogin: state => !!state.token,
     userInfo: state => state.userInfo,
+    isAdmin: state => state.isAdmin,
     diaryList: state => state.diaryList,
     currentDiary: state => state.currentDiary
   }
