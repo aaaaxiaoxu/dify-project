@@ -75,6 +75,7 @@ def create_app(config_name='default'):
     from routes.map import map_bp
     from routes.share import share_bp
     from routes.file import file_bp
+    from routes.stats import stats_bp
     
     app.register_blueprint(user_bp, url_prefix='/api/user')
     app.register_blueprint(diary_bp, url_prefix='/api/diary')
@@ -82,6 +83,7 @@ def create_app(config_name='default'):
     app.register_blueprint(map_bp, url_prefix='/api/map')
     app.register_blueprint(share_bp, url_prefix='/api/share')
     app.register_blueprint(file_bp, url_prefix='/api/file')
+    app.register_blueprint(stats_bp, url_prefix='/api/stats')
 
     # 启动时自动补建缺失数据表（不会删除已有表和数据）
     with app.app_context():

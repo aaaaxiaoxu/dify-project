@@ -34,5 +34,9 @@ export default {
   
   // 分享相关接口
   SHARE_GENERATE: BASE_URL + '/share/generate',
-  SHARE_DETAIL: BASE_URL + '/share/'
+  SHARE_DETAIL: BASE_URL + '/share/',
+  
+  // 统计分析接口
+  STATS_EMOTION_DISTRIBUTION: BASE_URL + '/stats/emotion-distribution',
+  STATS_EMOTION_TREND: BASE_URL + '/stats/emotion-trend'
 }

@@ -29,6 +29,10 @@
         <text class="btn-icon">🗺️</text>
         <text>查看足迹</text>
       </button>
+      <button class="secondary-btn" @click="goToStats">
+        <text class="btn-icon">📊</text>
+        <text>统计分析</text>
+      </button>
     </view>
     
     <view class="recent-diaries">
@@ -233,6 +237,12 @@ export default {
     goToMap() {
       uni.switchTab({
         url: '/pages/map/map'
+      })
+    },
+    
+    goToStats() {
+      uni.switchTab({
+        url: '/pages/stats/stats'
       })
     },
     

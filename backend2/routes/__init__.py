@@ -5,6 +5,7 @@ def register_blueprints(app):
     from .ai import ai_bp
     from .file import file_bp
     from .share import share_bp
+    from .stats import stats_bp
     
     app.register_blueprint(user_bp, url_prefix='/api/user')
     app.register_blueprint(diary_bp, url_prefix='/api/diary')
@@ -12,3 +13,4 @@ def register_blueprints(app):
     app.register_blueprint(ai_bp, url_prefix='/api/ai')
     app.register_blueprint(file_bp, url_prefix='/api/file')
     app.register_blueprint(share_bp, url_prefix='/api/share')
+    app.register_blueprint(stats_bp, url_prefix='/api/stats')

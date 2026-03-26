@@ -70,6 +70,14 @@
         "navigationBarBackgroundColor": "#007AFF",
         "navigationBarTextStyle": "white"
       }
+    },
+    {
+      "path": "pages/stats/stats",
+      "style": {
+        "navigationBarTitleText": "统计分析",
+        "navigationBarBackgroundColor": "#007AFF",
+        "navigationBarTextStyle": "white"
+      }
     }
   ],
   "globalStyle": {
@@ -101,6 +109,12 @@
         "text": "足迹",
         "iconPath": "static/tabbar/map.png",
         "selectedIconPath": "static/tabbar/map-active.png"
+      },
+      {
+        "pagePath": "pages/stats/stats",
+        "text": "统计",
+        "iconPath": "static/tabbar/stats.png",
+        "selectedIconPath": "static/tabbar/stats-active.png"
       },
       {
         "pagePath": "pages/profile/profile",
