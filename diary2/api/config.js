@@ -35,6 +35,12 @@ export default {
   // 分享相关接口
   SHARE_GENERATE: BASE_URL + '/share/generate',
   SHARE_DETAIL: BASE_URL + '/share/',
+  SHARE_PAGE: BASE_URL + '/share/page/',
+  SHARE_LIST: BASE_URL + '/share/list',
+  SHARE_BY_DIARY: BASE_URL + '/share/diary/',
+  SHARE_REVOKE: BASE_URL + '/share/revoke/',
+  SHARE_DELETE: BASE_URL + '/share/delete/',
+  SHARE_STATS: BASE_URL + '/share/stats/',
   
   // 统计分析接口
   STATS_EMOTION_DISTRIBUTION: BASE_URL + '/stats/emotion-distribution',

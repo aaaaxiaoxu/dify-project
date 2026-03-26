@@ -93,6 +93,36 @@ class AIAnalysis(db.Model):
     created_at = db.Column(db.DateTime, default=get_current_time, comment='创建时间')
     updated_at = db.Column(db.DateTime, default=get_current_time, onupdate=get_current_time, comment='更新时间')
 
+class ShareLink(db.Model):
+    __tablename__ = 'share_links'
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True, comment='分享ID')
+    token = db.Column(db.String(64), unique=True, nullable=False, index=True, comment='分享令牌')
+    diary_id = db.Column(db.BigInteger, db.ForeignKey('diaries.id', ondelete='CASCADE'), nullable=False, comment='日记ID')
+    user_id = db.Column(db.BigInteger, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, comment='创建者ID')
+    view_password = db.Column(db.String(255), nullable=True, comment='查看密码(NULL表示公开)')
+    expire_time = db.Column(db.DateTime, nullable=True, comment='过期时间(NULL表示永久)')
+    view_limit = db.Column(db.Integer, nullable=True, comment='访问次数上限(NULL表示无限)')
+    view_count = db.Column(db.Integer, nullable=False, default=0, comment='当前访问次数')
+    is_active = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true(), comment='是否有效')
+    created_at = db.Column(db.DateTime, default=get_current_time, comment='创建时间')
+    updated_at = db.Column(db.DateTime, default=get_current_time, onupdate=get_current_time, comment='更新时间')
+
+    # 关系
+    diary = db.relationship('Diary', backref=db.backref('share_links', lazy='dynamic'))
+    logs = db.relationship('ShareLog', backref='share_link', lazy='dynamic', cascade='all, delete-orphan')
+
+
+class ShareLog(db.Model):
+    __tablename__ = 'share_logs'
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True, comment='日志ID')
+    share_link_id = db.Column(db.BigInteger, db.ForeignKey('share_links.id', ondelete='CASCADE'), nullable=False, comment='分享链接ID')
+    ip_address = db.Column(db.String(45), nullable=True, comment='访问者IP')
+    user_agent = db.Column(db.String(500), nullable=True, comment='浏览器UA')
+    accessed_at = db.Column(db.DateTime, default=get_current_time, comment='访问时间')
+
+
 class TravelTrajectory(db.Model):
     __tablename__ = 'travel_trajectories'
     

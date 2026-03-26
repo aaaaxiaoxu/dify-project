@@ -42,6 +42,12 @@
         <text class="menu-arrow">></text>
       </view>
       
+      <view class="menu-item" @click="goToShareManage">
+        <text class="menu-icon">🔗</text>
+        <text class="menu-text">分享管理</text>
+        <text class="menu-arrow">></text>
+      </view>
+      
       <view class="menu-item" @click="goToSettings">
         <text class="menu-icon">⚙️</text>
         <text class="menu-text">设置</text>
@@ -134,6 +140,12 @@ export default {
     goToTravelMap() {
       uni.switchTab({
         url: '/pages/map/map'
+      })
+    },
+    
+    goToShareManage() {
+      uni.navigateTo({
+        url: '/pages/share/manage'
       })
     },
     

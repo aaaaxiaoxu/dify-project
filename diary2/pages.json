@@ -78,6 +78,15 @@
         "navigationBarBackgroundColor": "#007AFF",
         "navigationBarTextStyle": "white"
       }
+    },
+    {
+      "path": "pages/share/manage",
+      "style": {
+        "navigationBarTitleText": "分享管理",
+        "navigationBarBackgroundColor": "#007AFF",
+        "navigationBarTextStyle": "white",
+        "enablePullDownRefresh": true
+      }
     }
   ],
   "globalStyle": {
