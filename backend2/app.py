@@ -139,6 +139,7 @@ def create_app(config_name='default'):
     from routes.share import share_bp
     from routes.file import file_bp
     from routes.stats import stats_bp
+    from routes.report import report_bp
     from routes.admin import admin_bp
     
     app.register_blueprint(user_bp, url_prefix='/api/user')
@@ -148,6 +149,7 @@ def create_app(config_name='default'):
     app.register_blueprint(share_bp, url_prefix='/api/share')
     app.register_blueprint(file_bp, url_prefix='/api/file')
     app.register_blueprint(stats_bp, url_prefix='/api/stats')
+    app.register_blueprint(report_bp, url_prefix='/api/report')
     app.register_blueprint(admin_bp, url_prefix='/api/admin')
 
     # 启动时自动补建缺失数据表（不会删除已有表和数据）

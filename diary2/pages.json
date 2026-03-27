@@ -80,6 +80,14 @@
       }
     },
     {
+      "path": "pages/report/report",
+      "style": {
+        "navigationBarTitleText": "智能旅行总结",
+        "navigationBarBackgroundColor": "#007AFF",
+        "navigationBarTextStyle": "white"
+      }
+    },
+    {
       "path": "pages/share/manage",
       "style": {
         "navigationBarTitleText": "分享管理",

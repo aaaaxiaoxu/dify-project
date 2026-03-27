@@ -10,10 +10,50 @@ class DifyClient:
     def __init__(self):
         self.api_key = None
         self.api_url = None
+        self.report_api_key = None
+        self.report_api_url = None
         
     def init_app(self, app):
         self.api_key = app.config.get('DIFY_API_KEY')
         self.api_url = app.config.get('DIFY_API_URL')
+        self.report_api_key = app.config.get('DIFY_REPORT_API_KEY') or self.api_key
+        self.report_api_url = app.config.get('DIFY_REPORT_API_URL') or self.api_url
+
+    def _has_valid_workflow_config(self, api_key, api_url):
+        return bool(
+            api_key and
+            api_url and
+            str(api_key).strip() and
+            str(api_url).strip() and
+            str(api_key).strip() != 'your-dify-api-key'
+        )
+
+    def _run_workflow(self, api_key, api_url, inputs, timeout=60, user='travel_diary_user'):
+        if not self._has_valid_workflow_config(api_key, api_url):
+            return None, 'Dify 工作流未配置'
+
+        url = f"{str(api_url).rstrip('/')}/workflows/run"
+        headers = {
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json'
+        }
+        data = {
+            'inputs': inputs,
+            'response_mode': 'blocking',
+            'user': user
+        }
+
+        try:
+            resp = requests.post(url, headers=headers, json=data, timeout=timeout)
+            if resp.status_code == 200:
+                return resp, None
+            err_body = resp.text
+            logger.warning("Dify API 返回 %s: %s", resp.status_code, err_body)
+            return None, f"HTTP {resp.status_code}: {err_body}"
+        except Exception as e:
+            last_error = f"{type(e).__name__}: {e}"
+            logger.warning("Dify API 请求异常: %s", last_error)
+            return None, last_error
 
     def _call_workflow(self, url, headers, content, image_urls=None, video_urls=None, timeout=60):
         """
@@ -60,6 +100,38 @@ class DifyClient:
             logger.warning("Dify API 请求异常: %s", last_error)
             return None, last_error
 
+    def _extract_outputs(self, resp):
+        try:
+            result = resp.json()
+            data = result.get('data', {})
+
+            if data.get('status') != 'succeeded':
+                logger.warning("Dify 工作流执行失败: %s", data.get('error', '未知错误'))
+                return None
+
+            outputs = data.get('outputs', {})
+            if not outputs:
+                logger.warning("Dify 返回成功但 outputs 为空: %s", result)
+                return None
+            return outputs
+        except Exception as e:
+            logger.error("Dify 返回解析失败: %s", e)
+            return None
+
+    def _parse_json_output(self, raw_value):
+        if isinstance(raw_value, dict):
+            return raw_value
+        if not isinstance(raw_value, str):
+            return None
+
+        cleaned = re.sub(r'^```(?:json)?\s*', '', raw_value.strip())
+        cleaned = re.sub(r'\s*```$', '', cleaned.strip())
+        try:
+            parsed = json.loads(cleaned)
+            return parsed if isinstance(parsed, dict) else None
+        except json.JSONDecodeError:
+            return None
+
     def analyze_diary_content(self, content, image_urls=None, video_urls=None):
         """
         使用Dify工作流分析日记内容
@@ -67,7 +139,7 @@ class DifyClient:
         :param image_urls: 图片 URL 列表
         :param video_urls: 视频 URL 列表
         """
-        if not self.api_key or not self.api_url:
+        if not self._has_valid_workflow_config(self.api_key, self.api_url):
             logger.warning("Dify 未配置 (api_key=%s, api_url=%s)，跳过", bool(self.api_key), bool(self.api_url))
             return None
 
@@ -88,29 +160,16 @@ class DifyClient:
             logger.error("Dify API 所有 inputs 组合均失败: %s", error)
             return None
 
+        outputs = self._extract_outputs(resp)
+        if not outputs:
+            return None
+
         try:
-            result = resp.json()
-            data = result.get('data', {})
-
-            # 检查工作流是否执行成功
-            if data.get('status') != 'succeeded':
-                logger.warning("Dify 工作流执行失败: %s", data.get('error', '未知错误'))
-                return None
-
-            outputs = data.get('outputs', {})
-            if not outputs:
-                logger.warning("Dify 返回成功但 outputs 为空: %s", result)
-                return None
-
             # Dify 工作流返回的是 analysis_result 字段，内容是 JSON 字符串（可能包裹在 markdown 代码块中）
             analysis_raw = outputs.get("analysis_result", "")
             if analysis_raw:
-                # 去掉 markdown 代码块标记 ```json ... ```
-                cleaned = re.sub(r'^```(?:json)?\s*', '', analysis_raw.strip())
-                cleaned = re.sub(r'\s*```$', '', cleaned.strip())
-                try:
-                    parsed = json.loads(cleaned)
-                    # 解析情感评分，确保在 -1.0 ~ 1.0 范围内
+                parsed = self._parse_json_output(analysis_raw)
+                if parsed is not None:
                     raw_score = parsed.get("emotion_score")
                     emotion_score = None
                     if raw_score is not None:
@@ -128,7 +187,7 @@ class DifyClient:
                         "writing_style": parsed.get("writing_style", ""),
                         "writing_suggestion": parsed.get("memory_point", "")
                     }
-                except json.JSONDecodeError:
+                else:
                     logger.warning("Dify analysis_result JSON 解析失败，原始内容: %s", analysis_raw[:200])
                     return {
                         "emotion_label": "",
@@ -155,3 +214,62 @@ class DifyClient:
         except Exception as e:
             logger.error("Dify 返回解析失败: %s", e)
             return None
+
+    def generate_travel_report(self, report_context, start_date, end_date, report_style='warm'):
+        """
+        使用 Dify 工作流生成旅行报告。
+        :param report_context: 后端聚合后的 dict
+        :param start_date: 开始日期字符串
+        :param end_date: 结束日期字符串
+        :param report_style: 报告风格
+        """
+        if not self._has_valid_workflow_config(self.report_api_key, self.report_api_url):
+            logger.warning("Dify 报告工作流未配置，跳过")
+            return None
+
+        inputs = {
+            'report_context_json': json.dumps(report_context, ensure_ascii=False),
+            'start_date': start_date,
+            'end_date': end_date,
+            'report_style': report_style or 'warm',
+        }
+
+        resp, error = self._run_workflow(
+            self.report_api_key,
+            self.report_api_url,
+            inputs,
+            timeout=90,
+            user='travel_report_user',
+        )
+        if resp is None:
+            logger.error("Dify 报告工作流失败: %s", error)
+            return None
+
+        outputs = self._extract_outputs(resp)
+        if not outputs:
+            return None
+
+        report_raw = (
+            outputs.get('report_result') or
+            outputs.get('report') or
+            outputs.get('travel_report')
+        )
+        parsed = self._parse_json_output(report_raw)
+        if parsed is not None:
+            return parsed
+
+        direct_fields = {
+            "report_title": outputs.get("report_title", ""),
+            "report_subtitle": outputs.get("report_subtitle", ""),
+            "summary": outputs.get("summary", ""),
+            "highlights": outputs.get("highlights", []),
+            "emotion_review": outputs.get("emotion_review", ""),
+            "travel_preferences": outputs.get("travel_preferences", []),
+            "next_trip_suggestions": outputs.get("next_trip_suggestions", []),
+            "memory_quote": outputs.get("memory_quote", ""),
+        }
+        if any(direct_fields.values()):
+            return direct_fields
+
+        logger.warning("Dify 报告工作流返回无法识别: %s", outputs)
+        return None

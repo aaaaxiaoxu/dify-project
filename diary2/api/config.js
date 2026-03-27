@@ -45,6 +45,9 @@ export default {
   // 统计分析接口
   STATS_EMOTION_DISTRIBUTION: BASE_URL + '/stats/emotion-distribution',
   STATS_EMOTION_TREND: BASE_URL + '/stats/emotion-trend',
+
+  // 智能旅行总结
+  REPORT_GENERATE: BASE_URL + '/report/generate',
   
   // 管理员相关接口
   ADMIN_UPGRADE: BASE_URL + '/admin/upgrade',

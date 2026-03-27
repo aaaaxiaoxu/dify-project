@@ -47,6 +47,12 @@
         <text class="menu-text">分享管理</text>
         <text class="menu-arrow">></text>
       </view>
+
+      <view class="menu-item" @click="goToTravelReport">
+        <text class="menu-icon">🧭</text>
+        <text class="menu-text">智能旅行总结</text>
+        <text class="menu-arrow">></text>
+      </view>
       
       <view class="menu-item" @click="goToSettings">
         <text class="menu-icon">⚙️</text>
@@ -163,6 +169,12 @@ export default {
     goToShareManage() {
       uni.navigateTo({
         url: '/pages/share/manage'
+      })
+    },
+
+    goToTravelReport() {
+      uni.navigateTo({
+        url: '/pages/report/report'
       })
     },
     
