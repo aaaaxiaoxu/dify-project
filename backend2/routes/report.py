@@ -268,7 +268,9 @@ def _select_sample_entries(items, limit=10):
     return sample[:limit]
 
 
-def _select_report_cover_image(rows):
+def _select_report_images(rows):
+    selected = []
+
     for diary, _analysis_record in reversed(rows):
         for image in diary.images or []:
             image_url = (image.image_url or '').strip()
@@ -276,14 +278,17 @@ def _select_report_cover_image(rows):
                 continue
             if not image_url.startswith(('http://', 'https://')):
                 continue
-            return {
-                'image_url': image_url,
-                'diary_id': diary.id,
-                'diary_title': (diary.title or '').strip() or '未命名日记',
-                'diary_date': diary.date.isoformat() if diary.date else '',
-                'location': (diary.location or '').strip(),
-            }
-    return None
+            selected.append(
+                {
+                    'image_url': image_url,
+                    'diary_id': diary.id,
+                    'diary_title': (diary.title or '').strip() or '未命名日记',
+                    'diary_date': diary.date.isoformat() if diary.date else '',
+                    'location': (diary.location or '').strip(),
+                }
+            )
+            break
+    return selected
 
 
 def _build_report_context(rows, start_date, end_date):
@@ -332,7 +337,7 @@ def _build_report_context(rows, start_date, end_date):
     unique_locations = unique_location_strings(diaries)
     highlights = _select_highlights(items)
     sample_entries = _select_sample_entries(items)
-    cover_image = _select_report_cover_image(rows)
+    report_images = _select_report_images(rows)
     avg_emotion_score = round(sum(score_values) / len(score_values), 2) if score_values else None
 
     dedup_advice = list(OrderedDict((item, None) for item in travel_advice_pool).keys())
@@ -366,7 +371,7 @@ def _build_report_context(rows, start_date, end_date):
         ],
         'highlights': highlights,
         'entries': sample_entries,
-        'cover_image': cover_image,
+        'report_images': report_images,
         'travel_advice_pool': dedup_advice[:5],
     }
 
@@ -538,26 +543,38 @@ def _normalize_string_list(value, fallback):
     return fallback
 
 
-def _normalize_cover_image(value):
-    if isinstance(value, str):
-        image_url = value.strip()
-        image_meta = {}
-    elif isinstance(value, dict):
-        image_url = str(value.get('image_url') or value.get('url') or '').strip()
-        image_meta = value
-    else:
-        return None
+def _normalize_report_images(value):
+    if not isinstance(value, list):
+        return []
 
-    if not image_url or not image_url.startswith(('http://', 'https://')):
-        return None
+    images = []
+    seen_urls = set()
+    for item in value:
+        if isinstance(item, str):
+            image_url = item.strip()
+            image_meta = {}
+        elif isinstance(item, dict):
+            image_url = str(item.get('image_url') or item.get('url') or '').strip()
+            image_meta = item
+        else:
+            continue
 
-    return {
-        'image_url': image_url,
-        'diary_id': image_meta.get('diary_id'),
-        'diary_title': str(image_meta.get('diary_title') or '').strip(),
-        'diary_date': str(image_meta.get('diary_date') or '').strip(),
-        'location': str(image_meta.get('location') or '').strip(),
-    }
+        if not image_url or image_url in seen_urls:
+            continue
+        if not image_url.startswith(('http://', 'https://')):
+            continue
+
+        images.append(
+            {
+                'image_url': image_url,
+                'diary_id': image_meta.get('diary_id'),
+                'diary_title': str(image_meta.get('diary_title') or '').strip(),
+                'diary_date': str(image_meta.get('diary_date') or '').strip(),
+                'location': str(image_meta.get('location') or '').strip(),
+            }
+        )
+        seen_urls.add(image_url)
+    return images
 
 
 def _merge_report_payload(payload, context):
@@ -594,9 +611,15 @@ def _normalize_export_bundle(payload):
     period = payload.get('period') if isinstance(payload.get('period'), dict) else {}
     summary_stats = payload.get('summary_stats') if isinstance(payload.get('summary_stats'), dict) else {}
     report = payload.get('report') if isinstance(payload.get('report'), dict) else {}
-    cover_image = _normalize_cover_image(payload.get('cover_image'))
-    if cover_image is None and isinstance(payload.get('gallery_images'), list) and payload.get('gallery_images'):
-        cover_image = _normalize_cover_image(payload.get('gallery_images')[0])
+    report_images = _normalize_report_images(payload.get('report_images'))
+
+    if not report_images and isinstance(payload.get('gallery_images'), list):
+        report_images = _normalize_report_images(payload.get('gallery_images'))
+
+    if not report_images:
+        legacy_cover = payload.get('cover_image')
+        if legacy_cover:
+            report_images = _normalize_report_images([legacy_cover])
 
     return {
         'period': {
@@ -611,7 +634,7 @@ def _normalize_export_bundle(payload):
             'total_distance_km': summary_stats.get('total_distance_km', 0),
             'avg_emotion_score': summary_stats.get('avg_emotion_score'),
         },
-        'cover_image': cover_image,
+        'report_images': report_images,
         'report': {
             'report_title': str(report.get('report_title') or '').strip(),
             'report_subtitle': str(report.get('report_subtitle') or '').strip(),
@@ -677,7 +700,7 @@ def generate_report():
             'source': source,
             'report_style': report_style,
             'summary_stats': report_context['summary_stats'],
-            'cover_image': report_context['cover_image'],
+            'report_images': report_context['report_images'],
             'report': report_payload,
         }
     ), 200

@@ -53,11 +53,21 @@
 	        </button>
 	      </view>
 
-	      <view v-if="coverImage" class="report-card cover-card">
-	        <image class="cover-image" :src="coverImage.image_url" mode="aspectFill"></image>
-	        <view class="cover-meta">
-	          <text class="cover-date">{{ coverImage.diary_date || '--' }}</text>
-	          <text class="cover-location">{{ coverImage.location || coverImage.diary_title || '旅行记录' }}</text>
+	      <view v-if="reportImages.length" class="report-card report-images-card">
+	        <text class="card-title">旅行图片</text>
+	        <text class="images-tip">每篇日记最多展示 1 张图，没有图片的日记会自动跳过。</text>
+	        <view class="images-grid">
+	          <view
+	            v-for="(item, index) in reportImages"
+	            :key="'report-image-' + index"
+	            class="image-card"
+	          >
+	            <image class="image-card-photo" :src="item.image_url" mode="aspectFill"></image>
+	            <view class="image-card-meta">
+	              <text class="image-card-date">{{ item.diary_date || '--' }}</text>
+	              <text class="image-card-location">{{ item.location || item.diary_title || '旅行记录' }}</text>
+	            </view>
+	          </view>
 	        </view>
 	      </view>
 
@@ -190,9 +200,15 @@ export default {
         : {}
     },
 
-    coverImage() {
-      if (!this.reportData) return null
-      return this.reportData.cover_image || null
+    reportImages() {
+      if (!this.reportData) return []
+      if (Array.isArray(this.reportData.report_images)) {
+        return this.reportData.report_images
+      }
+      if (this.reportData.cover_image) {
+        return [this.reportData.cover_image]
+      }
+      return []
     },
 
     sourceLabel() {
@@ -208,6 +224,11 @@ export default {
   methods: {
     restoreCachedReport() {
       const cache = this.$store.state.reportCache || {}
+      const cachedReportData = cache.reportData
+      const hasCurrentImageShape =
+        !cachedReportData ||
+        Array.isArray(cachedReportData.report_images)
+
       if (cache.startDate && cache.endDate) {
         this.startDate = cache.startDate
         this.endDate = cache.endDate
@@ -216,7 +237,7 @@ export default {
       }
 
       this.rangeType = cache.rangeType || '30d'
-      this.reportData = cache.reportData || null
+      this.reportData = hasCurrentImageShape ? (cachedReportData || null) : null
       this.errorMessage = ''
     },
 
@@ -650,36 +671,58 @@ export default {
   color: #334155;
 }
 
-.cover-card {
+.report-images-card {
   overflow: hidden;
-  padding: 0;
 }
 
-.cover-image {
+.images-tip {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  line-height: 1.7;
+  color: #64748b;
+}
+
+.images-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  margin-top: 18rpx;
+}
+
+.image-card {
+  width: calc(50% - 8rpx);
+  box-sizing: border-box;
+  border-radius: 22rpx;
+  overflow: hidden;
+  background: #f8fbff;
+  border: 1rpx solid #dbeafe;
+}
+
+.image-card-photo {
   width: 100%;
-  height: 360rpx;
+  height: 240rpx;
   display: block;
   background: #e2e8f0;
 }
 
-.cover-meta {
-  padding: 20rpx 24rpx 24rpx;
-  background: #f8fbff;
+.image-card-meta {
+  padding: 16rpx;
 }
 
-.cover-date,
-.cover-location {
+.image-card-date,
+.image-card-location {
   display: block;
 }
 
-.cover-date {
+.image-card-date {
   font-size: 20rpx;
   color: #64748b;
 }
 
-.cover-location {
+.image-card-location {
   margin-top: 8rpx;
-  font-size: 24rpx;
+  font-size: 22rpx;
   line-height: 1.6;
   color: #0f172a;
 }

@@ -17,28 +17,40 @@ def _normalize_list(value):
     return []
 
 
-def _normalize_cover_image(value):
-    if isinstance(value, str):
-        image_url = value.strip()
-        image_meta = {}
-    elif isinstance(value, dict):
-        image_url = str(value.get('image_url') or value.get('url') or '').strip()
-        image_meta = value
-    else:
-        return None
+def _normalize_report_images(value):
+    if not isinstance(value, list):
+        return []
 
-    if not image_url or not image_url.startswith(('http://', 'https://')):
-        return None
+    images = []
+    seen_urls = set()
+    for item in value:
+        if isinstance(item, str):
+            image_url = item.strip()
+            image_meta = {}
+        elif isinstance(item, dict):
+            image_url = str(item.get('image_url') or item.get('url') or '').strip()
+            image_meta = item
+        else:
+            continue
 
-    return {
-        'image_url': image_url,
-        'diary_title': str(image_meta.get('diary_title') or '').strip(),
-        'diary_date': str(image_meta.get('diary_date') or '').strip(),
-        'location': str(image_meta.get('location') or '').strip(),
-    }
+        if not image_url or image_url in seen_urls:
+            continue
+        if not image_url.startswith(('http://', 'https://')):
+            continue
+
+        images.append(
+            {
+                'image_url': image_url,
+                'diary_title': str(image_meta.get('diary_title') or '').strip(),
+                'diary_date': str(image_meta.get('diary_date') or '').strip(),
+                'location': str(image_meta.get('location') or '').strip(),
+            }
+        )
+        seen_urls.add(image_url)
+    return images
 
 
-def _cover_caption(item):
+def _report_image_caption(item):
     date_text = str(item.get('diary_date') or '').strip()
     location_text = str(item.get('location') or '').strip()
     title_text = str(item.get('diary_title') or '').strip()
@@ -200,8 +212,8 @@ def build_travel_report_pdf(payload, output_path):
         alignment=TA_LEFT,
         textColor=colors.white,
     )
-    cover_caption_style = ParagraphStyle(
-        'CoverCaption',
+    report_image_caption_style = ParagraphStyle(
+        'ReportImageCaption',
         parent=base['BodyText'],
         fontName='STSong-Light',
         fontSize=8.5,
@@ -213,7 +225,9 @@ def build_travel_report_pdf(payload, output_path):
     period = payload.get('period') or {}
     report = payload.get('report') or {}
     summary_stats = payload.get('summary_stats') or {}
-    cover_image = _normalize_cover_image(payload.get('cover_image'))
+    report_images = _normalize_report_images(payload.get('report_images'))
+    if not report_images and payload.get('cover_image'):
+        report_images = _normalize_report_images([payload.get('cover_image')])
     source = payload.get('source') or 'local'
     generated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
 
@@ -244,31 +258,56 @@ def build_travel_report_pdf(payload, output_path):
     story.append(header_table)
     story.append(Spacer(1, 14))
 
-    if cover_image:
-        pil_image = _download_gallery_pil_image(cover_image.get('image_url'))
-        image_buffer = _pil_image_to_buffer(pil_image) if pil_image is not None else None
-        if image_buffer is not None:
-            image_width = float(doc.width - 24)
-            image_height = min(220, image_width * (pil_image.height / max(pil_image.width, 1)))
+    if report_images:
+        image_title = Paragraph(_safe_text('旅行图片'), section_title_style)
+        story.append(image_title)
+
+        image_cards = []
+        image_col_width = doc.width / 2 - 10
+        for item in report_images:
+            pil_image = _download_gallery_pil_image(item.get('image_url'))
+            if pil_image is None:
+                continue
+            image_buffer = _pil_image_to_buffer(pil_image)
+            if image_buffer is None:
+                continue
+
+            image_width = float(image_col_width - 20)
+            image_height = min(150, image_width * (pil_image.height / max(pil_image.width, 1)))
             image_flowable = PlatypusImage(image_buffer, width=image_width, height=image_height)
-            caption_flowable = Paragraph(_safe_text(_cover_caption(cover_image)), cover_caption_style)
-            cover_table = Table(
+            caption_flowable = Paragraph(_safe_text(_report_image_caption(item)), report_image_caption_style)
+            card = Table(
                 [[image_flowable], [caption_flowable]],
                 colWidths=[image_width],
             )
-            cover_table.setStyle(
+            card.setStyle(
                 TableStyle(
                     [
                         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F8FBFF')),
                         ('BOX', (0, 0), (-1, -1), 0.8, colors.HexColor('#D9E8FF')),
-                        ('LEFTPADDING', (0, 0), (-1, -1), 12),
-                        ('RIGHTPADDING', (0, 0), (-1, -1), 12),
-                        ('TOPPADDING', (0, 0), (-1, -1), 12),
-                        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+                        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+                        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+                        ('TOPPADDING', (0, 0), (-1, -1), 10),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
                     ]
                 )
             )
-            story.append(cover_table)
+            image_cards.append(card)
+
+        if image_cards:
+            image_rows = []
+            for index in range(0, len(image_cards), 2):
+                left_card = image_cards[index]
+                right_card = image_cards[index + 1] if index + 1 < len(image_cards) else ''
+                image_rows.append([left_card, right_card])
+
+            image_table = Table(
+                image_rows,
+                colWidths=[image_col_width, image_col_width],
+                hAlign='LEFT',
+            )
+            image_table.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'TOP')]))
+            story.append(image_table)
             story.append(Spacer(1, 16))
 
     stat_cells = []
@@ -480,9 +519,11 @@ class _PillowTravelReportBuilder:
         os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
         self._new_page()
         self._draw_header()
-        cover_image = _normalize_cover_image(self.payload.get('cover_image'))
-        if cover_image:
-            self._draw_cover_section(cover_image)
+        report_images = _normalize_report_images(self.payload.get('report_images'))
+        if not report_images and self.payload.get('cover_image'):
+            report_images = _normalize_report_images([self.payload.get('cover_image')])
+        if report_images:
+            self._draw_report_images_section(report_images)
         self._draw_stats_grid()
         self._draw_text_section('旅程概述', self._paragraph_specs(self._report_value('summary')))
         highlights = _normalize_list(self._report_value('highlights'))
@@ -703,46 +744,107 @@ class _PillowTravelReportBuilder:
             self.cursor_y += card_h + self.CARD_GAP
             continued = line_index < len(line_specs)
 
-    def _draw_cover_section(self, cover_image):
-        pil_image = _download_gallery_pil_image(cover_image.get('image_url'))
-        if pil_image is None:
+    def _draw_report_images_section(self, report_images):
+        prepared = []
+        for item in report_images:
+            pil_image = _download_gallery_pil_image(item.get('image_url'))
+            if pil_image is None:
+                continue
+            prepared.append(
+                {
+                    'image': pil_image,
+                    'caption': _report_image_caption(item),
+                }
+            )
+
+        if not prepared:
             return
 
+        title_font = self.fonts['section']
         caption_font = self.fonts['body_small']
-        caption_lines = self._wrap_text(
-            _cover_caption(cover_image),
-            caption_font,
-            self.PAGE_WIDTH - self.MARGIN_X * 2 - self.CARD_PADDING_X * 2,
-            draw=self.draw,
-        )[:2]
-        image_height = 320
-        caption_height = max(1, len(caption_lines)) * self._line_height(caption_font, 6)
-        card_height = self.CARD_PADDING_Y * 2 + image_height + caption_height + 18
-        self._ensure_space(card_height)
+        title_height = self._line_height(title_font, 0)
+        content_width = self.PAGE_WIDTH - self.MARGIN_X * 2 - self.CARD_PADDING_X * 2
+        column_gap = 20
+        tile_width = int((content_width - column_gap) / 2)
+        image_height = 240
+        caption_height = self._line_height(caption_font, 6) * 2
+        tile_height = image_height + caption_height + 56
+        row_gap = 16
 
-        card_x = self.MARGIN_X
-        card_y = self.cursor_y
-        card_w = self.PAGE_WIDTH - self.MARGIN_X * 2
-        self._rounded_card(card_x, card_y, card_w, card_height, self.colors['card'])
-        self.draw.rounded_rectangle(
-            (card_x, card_y, card_x + card_w, card_y + card_height),
-            radius=self.CARD_RADIUS,
-            outline=self.colors['border'],
-            width=2,
-        )
-        self._paste_gallery_image(pil_image, card_x + 12, card_y + 12, card_w - 24, image_height)
+        cursor = 0
+        continued = False
+        while cursor < len(prepared):
+            title_text = '旅行图片（续）' if continued else '旅行图片'
+            available_height = self.PAGE_HEIGHT - self.BOTTOM_MARGIN - self.cursor_y
+            min_card_height = self.CARD_PADDING_Y * 2 + title_height + tile_height + 24
+            if available_height < min_card_height:
+                self._new_page()
+                available_height = self.PAGE_HEIGHT - self.BOTTOM_MARGIN - self.cursor_y
 
-        caption_y = card_y + 12 + image_height + 12
-        for line in caption_lines:
-            self.draw.text(
-                (card_x + self.CARD_PADDING_X, caption_y),
-                line,
-                font=caption_font,
-                fill=self.colors['muted'],
+            row_height = tile_height + row_gap
+            content_limit = available_height - self.CARD_PADDING_Y * 2 - title_height - 24
+            rows_fit = max(1, int((content_limit + row_gap) // row_height))
+            take_count = min(len(prepared) - cursor, rows_fit * 2)
+            rows_count = (take_count + 1) // 2
+            card_height = int(self.CARD_PADDING_Y * 2 + title_height + 24 + rows_count * tile_height + max(0, rows_count - 1) * row_gap)
+
+            card_x = self.MARGIN_X
+            card_y = self.cursor_y
+            card_w = self.PAGE_WIDTH - self.MARGIN_X * 2
+            self._rounded_card(card_x, card_y, card_w, card_height, self.colors['card'])
+            self.draw.rounded_rectangle(
+                (card_x, card_y, card_x + card_w, card_y + card_height),
+                radius=self.CARD_RADIUS,
+                outline=self.colors['border'],
+                width=2,
             )
-            caption_y += self._line_height(caption_font, 6)
 
-        self.cursor_y += card_height + self.CARD_GAP
+            title_x = card_x + self.CARD_PADDING_X
+            title_y = card_y + self.CARD_PADDING_Y
+            self.draw.text((title_x, title_y), title_text, font=title_font, fill=self.colors['title'])
+            self.draw.rounded_rectangle(
+                (title_x, title_y + title_height + 10, title_x + 96, title_y + title_height + 18),
+                radius=4,
+                fill=self.colors['blue'],
+            )
+
+            row_y = title_y + title_height + 34
+            for row_index in range(rows_count):
+                for column_index in range(2):
+                    item_index = cursor + row_index * 2 + column_index
+                    if item_index >= cursor + take_count:
+                        continue
+
+                    tile_x = title_x + column_index * (tile_width + column_gap)
+                    tile_y = row_y + row_index * (tile_height + row_gap)
+                    self.draw.rounded_rectangle(
+                        (tile_x, tile_y, tile_x + tile_width, tile_y + tile_height),
+                        radius=24,
+                        fill=self.colors['card_alt'],
+                        outline=self.colors['border'],
+                        width=2,
+                    )
+                    self._paste_gallery_image(prepared[item_index]['image'], tile_x + 12, tile_y + 12, tile_width - 24, image_height)
+
+                    caption_lines = self._wrap_text(
+                        prepared[item_index]['caption'],
+                        caption_font,
+                        tile_width - 24,
+                        draw=self.draw,
+                    )[:2]
+                    caption_y = tile_y + 12 + image_height + 14
+                    for line in caption_lines:
+                        self.draw.text(
+                            (tile_x + 12, caption_y),
+                            line,
+                            font=caption_font,
+                            fill=self.colors['muted'],
+                        )
+                        caption_y += self._line_height(caption_font, 6)
+
+            cursor += take_count
+            self.cursor_y += card_height + self.CARD_GAP
+            continued = cursor < len(prepared)
 
     def _draw_quote_card(self, quote_text):
         font = self.fonts['quote']
