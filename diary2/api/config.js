@@ -48,6 +48,8 @@ export default {
 
   // 智能旅行总结
   REPORT_GENERATE: BASE_URL + '/report/generate',
+  REPORT_EXPORT_PDF: BASE_URL + '/report/export-pdf',
+  REPORT_DOWNLOAD: BASE_URL + '/report/download/',
   
   // 管理员相关接口
   ADMIN_UPGRADE: BASE_URL + '/admin/upgrade',

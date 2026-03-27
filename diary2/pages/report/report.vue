@@ -41,19 +41,30 @@
     </view>
 
     <view v-if="reportData" class="report-stack">
-      <view class="report-card report-header">
-        <view class="header-meta">
-          <text class="source-badge" :class="'source-' + reportData.source">{{ sourceLabel }}</text>
-          <text class="period-text">{{ formatPeriod(reportData.period) }}</text>
-        </view>
+	      <view class="report-card report-header">
+	        <view class="header-meta">
+	          <text class="source-badge" :class="'source-' + reportData.source">{{ sourceLabel }}</text>
+	          <text class="period-text">{{ formatPeriod(reportData.period) }}</text>
+	        </view>
         <text class="report-title">{{ report.report_title }}</text>
         <text class="report-subtitle">{{ report.report_subtitle }}</text>
-      </view>
+	        <button class="export-btn" :loading="exporting" :disabled="exporting" @click="exportPdf">
+	          {{ exporting ? '导出中...' : '导出 PDF' }}
+	        </button>
+	      </view>
 
-      <view class="stats-grid">
-        <view class="stats-card">
-          <text class="stats-value">{{ summaryStats.diary_count || 0 }}</text>
-          <text class="stats-label">篇日记</text>
+	      <view v-if="coverImage" class="report-card cover-card">
+	        <image class="cover-image" :src="coverImage.image_url" mode="aspectFill"></image>
+	        <view class="cover-meta">
+	          <text class="cover-date">{{ coverImage.diary_date || '--' }}</text>
+	          <text class="cover-location">{{ coverImage.location || coverImage.diary_title || '旅行记录' }}</text>
+	        </view>
+	      </view>
+
+	      <view class="stats-grid">
+	        <view class="stats-card">
+	          <text class="stats-value">{{ summaryStats.diary_count || 0 }}</text>
+	          <text class="stats-label">篇日记</text>
         </view>
         <view class="stats-card">
           <text class="stats-value">{{ summaryStats.city_count || 0 }}</text>
@@ -66,13 +77,13 @@
         <view class="stats-card">
           <text class="stats-value">{{ formatScore(summaryStats.avg_emotion_score) }}</text>
           <text class="stats-label">平均情绪</text>
-        </view>
-      </view>
+	        </view>
+	      </view>
 
-      <view class="report-card">
-        <text class="card-title">旅程概述</text>
-        <text class="body-text">{{ report.summary }}</text>
-      </view>
+	      <view class="report-card">
+	        <text class="card-title">旅程概述</text>
+	        <text class="body-text">{{ report.summary }}</text>
+	      </view>
 
       <view class="report-card" v-if="report.highlights.length">
         <text class="card-title">高光时刻</text>
@@ -115,7 +126,7 @@
         </view>
       </view>
 
-      <view class="quote-card">
+      <view v-if="report.memory_quote" class="quote-card">
         <text class="quote-mark">“</text>
         <text class="quote-text">{{ report.memory_quote }}</text>
       </view>
@@ -138,6 +149,7 @@ export default {
   data() {
     return {
       loading: false,
+      exporting: false,
       rangeType: '30d',
       startDate: '',
       endDate: '',
@@ -178,6 +190,11 @@ export default {
         : {}
     },
 
+    coverImage() {
+      if (!this.reportData) return null
+      return this.reportData.cover_image || null
+    },
+
     sourceLabel() {
       if (!this.reportData) return ''
       return this.reportData.source === 'dify' ? 'AI 工作流生成' : '本地智能总结'
@@ -185,10 +202,24 @@ export default {
   },
 
   onLoad() {
-    this.initCustomRange()
+    this.restoreCachedReport()
   },
 
   methods: {
+    restoreCachedReport() {
+      const cache = this.$store.state.reportCache || {}
+      if (cache.startDate && cache.endDate) {
+        this.startDate = cache.startDate
+        this.endDate = cache.endDate
+      } else {
+        this.initCustomRange()
+      }
+
+      this.rangeType = cache.rangeType || '30d'
+      this.reportData = cache.reportData || null
+      this.errorMessage = ''
+    },
+
     initCustomRange() {
       this.endDate = this.formatDate(new Date())
       this.startDate = this.formatDate(this.offsetDate(-29))
@@ -279,6 +310,12 @@ export default {
         .then((res) => {
           this.reportData = res
           this.errorMessage = ''
+          this.$store.commit('SET_REPORT_CACHE', {
+            reportData: res,
+            rangeType: this.rangeType,
+            startDate: this.startDate,
+            endDate: this.endDate,
+          })
         })
         .catch((err) => {
           const msg = (err.data && err.data.msg) ? err.data.msg : '生成报告失败'
@@ -290,6 +327,101 @@ export default {
           this.loading = false
           uni.hideLoading()
         })
+    },
+
+    exportPdf() {
+      if (!this.token) {
+        uni.showToast({ title: '请先登录', icon: 'none' })
+        return
+      }
+      if (!this.reportData || this.exporting) return
+
+      this.exporting = true
+      uni.showLoading({ title: '导出中', mask: true })
+
+      request({
+        url: config.REPORT_EXPORT_PDF,
+        method: 'POST',
+        data: this.reportData,
+        header: {
+          Authorization: 'Bearer ' + this.token,
+        },
+      })
+        .then((res) => {
+          const fileName = res.file_name
+          if (!fileName) {
+            throw new Error('未返回 PDF 文件名')
+          }
+          return this.downloadPdf(fileName)
+        })
+        .catch((err) => {
+          const msg =
+            (err && err.data && err.data.msg) ||
+            err.message ||
+            '导出 PDF 失败'
+          uni.showToast({ title: msg, icon: 'none' })
+        })
+        .finally(() => {
+          this.exporting = false
+          uni.hideLoading()
+        })
+    },
+
+    downloadPdf(fileName) {
+      // #ifdef H5
+      return new Promise((resolve, reject) => {
+        uni.request({
+          url: config.REPORT_DOWNLOAD + encodeURIComponent(fileName),
+          method: 'GET',
+          responseType: 'arraybuffer',
+          header: {
+            Authorization: 'Bearer ' + this.token,
+          },
+          success: (res) => {
+            if (res.statusCode !== 200) {
+              reject(new Error('PDF 下载失败'))
+              return
+            }
+            const blob = new Blob([res.data], { type: 'application/pdf' })
+            const objectUrl = window.URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = objectUrl
+            link.download = fileName
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+            window.URL.revokeObjectURL(objectUrl)
+            uni.showToast({ title: 'PDF 已开始下载', icon: 'none' })
+            resolve()
+          },
+          fail: reject,
+        })
+      })
+      // #endif
+
+      // #ifndef H5
+      return new Promise((resolve, reject) => {
+        uni.downloadFile({
+          url: config.REPORT_DOWNLOAD + encodeURIComponent(fileName),
+          header: {
+            Authorization: 'Bearer ' + this.token,
+          },
+          success: (downloadRes) => {
+            if (downloadRes.statusCode !== 200) {
+              reject(new Error('PDF 下载失败'))
+              return
+            }
+            uni.openDocument({
+              filePath: downloadRes.tempFilePath,
+              showMenu: true,
+              success: resolve,
+              fail: reject,
+            })
+          },
+          fail: reject,
+        })
+      })
+      // #endif
     },
   },
 }
@@ -470,6 +602,16 @@ export default {
   color: #475569;
 }
 
+.export-btn {
+  margin-top: 22rpx;
+  border-radius: 999rpx;
+  background: rgba(15, 107, 255, 0.08);
+  color: #0f6bff;
+  border: 1rpx solid rgba(15, 107, 255, 0.16);
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
 .stats-grid {
   display: flex;
   flex-wrap: wrap;
@@ -506,6 +648,40 @@ export default {
   font-size: 25rpx;
   line-height: 1.9;
   color: #334155;
+}
+
+.cover-card {
+  overflow: hidden;
+  padding: 0;
+}
+
+.cover-image {
+  width: 100%;
+  height: 360rpx;
+  display: block;
+  background: #e2e8f0;
+}
+
+.cover-meta {
+  padding: 20rpx 24rpx 24rpx;
+  background: #f8fbff;
+}
+
+.cover-date,
+.cover-location {
+  display: block;
+}
+
+.cover-date {
+  font-size: 20rpx;
+  color: #64748b;
+}
+
+.cover-location {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: #0f172a;
 }
 
 .list-row,

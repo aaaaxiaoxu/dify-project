@@ -1,8 +1,10 @@
 import json
+import os
+import uuid
 from collections import Counter, OrderedDict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, send_file
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from sqlalchemy import func
 
@@ -14,6 +16,7 @@ from geo_utils import (
 )
 from models import AIAnalysis, Diary
 from utils.html_sanitize import html_to_plain_text
+from utils.report_pdf import build_travel_report_pdf
 
 report_bp = Blueprint('report', __name__)
 
@@ -265,6 +268,24 @@ def _select_sample_entries(items, limit=10):
     return sample[:limit]
 
 
+def _select_report_cover_image(rows):
+    for diary, _analysis_record in reversed(rows):
+        for image in diary.images or []:
+            image_url = (image.image_url or '').strip()
+            if not image_url:
+                continue
+            if not image_url.startswith(('http://', 'https://')):
+                continue
+            return {
+                'image_url': image_url,
+                'diary_id': diary.id,
+                'diary_title': (diary.title or '').strip() or '未命名日记',
+                'diary_date': diary.date.isoformat() if diary.date else '',
+                'location': (diary.location or '').strip(),
+            }
+    return None
+
+
 def _build_report_context(rows, start_date, end_date):
     diaries = []
     items = []
@@ -311,6 +332,7 @@ def _build_report_context(rows, start_date, end_date):
     unique_locations = unique_location_strings(diaries)
     highlights = _select_highlights(items)
     sample_entries = _select_sample_entries(items)
+    cover_image = _select_report_cover_image(rows)
     avg_emotion_score = round(sum(score_values) / len(score_values), 2) if score_values else None
 
     dedup_advice = list(OrderedDict((item, None) for item in travel_advice_pool).keys())
@@ -344,6 +366,7 @@ def _build_report_context(rows, start_date, end_date):
         ],
         'highlights': highlights,
         'entries': sample_entries,
+        'cover_image': cover_image,
         'travel_advice_pool': dedup_advice[:5],
     }
 
@@ -515,6 +538,28 @@ def _normalize_string_list(value, fallback):
     return fallback
 
 
+def _normalize_cover_image(value):
+    if isinstance(value, str):
+        image_url = value.strip()
+        image_meta = {}
+    elif isinstance(value, dict):
+        image_url = str(value.get('image_url') or value.get('url') or '').strip()
+        image_meta = value
+    else:
+        return None
+
+    if not image_url or not image_url.startswith(('http://', 'https://')):
+        return None
+
+    return {
+        'image_url': image_url,
+        'diary_id': image_meta.get('diary_id'),
+        'diary_title': str(image_meta.get('diary_title') or '').strip(),
+        'diary_date': str(image_meta.get('diary_date') or '').strip(),
+        'location': str(image_meta.get('location') or '').strip(),
+    }
+
+
 def _merge_report_payload(payload, context):
     fallback = _build_local_report(context)
     if not isinstance(payload, dict):
@@ -543,6 +588,41 @@ def _merge_report_payload(payload, context):
         merged[field] = _normalize_string_list(payload.get(field), fallback[field])
 
     return merged
+
+
+def _normalize_export_bundle(payload):
+    period = payload.get('period') if isinstance(payload.get('period'), dict) else {}
+    summary_stats = payload.get('summary_stats') if isinstance(payload.get('summary_stats'), dict) else {}
+    report = payload.get('report') if isinstance(payload.get('report'), dict) else {}
+    cover_image = _normalize_cover_image(payload.get('cover_image'))
+    if cover_image is None and isinstance(payload.get('gallery_images'), list) and payload.get('gallery_images'):
+        cover_image = _normalize_cover_image(payload.get('gallery_images')[0])
+
+    return {
+        'period': {
+            'start_date': str(period.get('start_date') or ''),
+            'end_date': str(period.get('end_date') or ''),
+            'range_type': str(period.get('range_type') or ''),
+        },
+        'source': str(payload.get('source') or 'local'),
+        'summary_stats': {
+            'diary_count': summary_stats.get('diary_count', 0),
+            'city_count': summary_stats.get('city_count', 0),
+            'total_distance_km': summary_stats.get('total_distance_km', 0),
+            'avg_emotion_score': summary_stats.get('avg_emotion_score'),
+        },
+        'cover_image': cover_image,
+        'report': {
+            'report_title': str(report.get('report_title') or '').strip(),
+            'report_subtitle': str(report.get('report_subtitle') or '').strip(),
+            'summary': str(report.get('summary') or '').strip(),
+            'highlights': _normalize_string_list(report.get('highlights'), []),
+            'emotion_review': str(report.get('emotion_review') or '').strip(),
+            'travel_preferences': _normalize_string_list(report.get('travel_preferences'), []),
+            'next_trip_suggestions': _normalize_string_list(report.get('next_trip_suggestions'), []),
+            'memory_quote': str(report.get('memory_quote') or '').strip(),
+        },
+    }
 
 
 @report_bp.route('/generate', methods=['POST'])
@@ -597,6 +677,65 @@ def generate_report():
             'source': source,
             'report_style': report_style,
             'summary_stats': report_context['summary_stats'],
+            'cover_image': report_context['cover_image'],
             'report': report_payload,
         }
     ), 200
+
+
+@report_bp.route('/export-pdf', methods=['POST'])
+@jwt_required()
+def export_report_pdf():
+    current_user_id = int(get_jwt_identity())
+    payload = request.get_json() or {}
+    export_bundle = _normalize_export_bundle(payload)
+
+    if not export_bundle['period']['start_date'] or not export_bundle['period']['end_date']:
+        return jsonify({'msg': '缺少报告时间范围，无法导出 PDF'}), 400
+    if not export_bundle['report']['report_title'] or not export_bundle['report']['summary']:
+        return jsonify({'msg': '缺少完整报告内容，无法导出 PDF'}), 400
+
+    upload_root = current_app.config.get('UPLOAD_FOLDER') or 'uploads'
+    export_dir = os.path.join(current_app.root_path, upload_root, 'report_exports')
+    os.makedirs(export_dir, exist_ok=True)
+
+    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    file_name = f'travel_report_{current_user_id}_{timestamp}_{uuid.uuid4().hex[:8]}.pdf'
+    file_path = os.path.join(export_dir, file_name)
+
+    try:
+        build_travel_report_pdf(export_bundle, file_path)
+    except RuntimeError as exc:
+        return jsonify({'msg': str(exc)}), 500
+    except Exception:
+        return jsonify({'msg': 'PDF 生成失败'}), 500
+
+    return jsonify(
+        {
+            'file_name': file_name,
+            'msg': 'PDF 已生成',
+        }
+    ), 200
+
+
+@report_bp.route('/download/<path:file_name>', methods=['GET'])
+@jwt_required()
+def download_report_pdf(file_name):
+    current_user_id = int(get_jwt_identity())
+    safe_name = os.path.basename(file_name or '')
+
+    if not safe_name.endswith('.pdf') or not safe_name.startswith(f'travel_report_{current_user_id}_'):
+        return jsonify({'msg': '文件不存在或无权访问'}), 404
+
+    upload_root = current_app.config.get('UPLOAD_FOLDER') or 'uploads'
+    file_path = os.path.join(current_app.root_path, upload_root, 'report_exports', safe_name)
+    if not os.path.exists(file_path):
+        return jsonify({'msg': '文件不存在'}), 404
+
+    return send_file(
+        file_path,
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=safe_name,
+        max_age=0,
+    )

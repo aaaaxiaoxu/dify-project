@@ -1,5 +1,15 @@
 import { createStore } from 'vuex'
 
+function createEmptyReportCache() {
+  return {
+    reportData: null,
+    rangeType: '30d',
+    startDate: '',
+    endDate: '',
+    updatedAt: ''
+  }
+}
+
 // 创建 store 实例
 const store = createStore({
   state: {
@@ -7,7 +17,8 @@ const store = createStore({
     token: uni.getStorageSync('token') || '', // 初始化时从本地存储获取token
     isAdmin: uni.getStorageSync('isAdmin') || false, // 管理员状态
     diaryList: [],
-    currentDiary: null
+    currentDiary: null,
+    reportCache: createEmptyReportCache()
   },
   mutations: {
     SET_USER_INFO(state, userInfo) {
@@ -15,6 +26,7 @@ const store = createStore({
     },
     SET_TOKEN(state, token) {
       state.token = token
+      state.reportCache = createEmptyReportCache()
       // 同时保存到本地存储
       try {
         uni.setStorageSync('token', token)
@@ -35,6 +47,17 @@ const store = createStore({
     },
     SET_CURRENT_DIARY(state, diary) {
       state.currentDiary = diary
+    },
+    SET_REPORT_CACHE(state, payload) {
+      state.reportCache = {
+        ...createEmptyReportCache(),
+        ...state.reportCache,
+        ...payload,
+        updatedAt: new Date().toISOString()
+      }
+    },
+    CLEAR_REPORT_CACHE(state) {
+      state.reportCache = createEmptyReportCache()
     }
   },
   actions: {
@@ -52,6 +75,12 @@ const store = createStore({
     },
     setCurrentDiary({ commit }, diary) {
       commit('SET_CURRENT_DIARY', diary)
+    },
+    setReportCache({ commit }, payload) {
+      commit('SET_REPORT_CACHE', payload)
+    },
+    clearReportCache({ commit }) {
+      commit('CLEAR_REPORT_CACHE')
     }
   },
   getters: {
@@ -59,7 +88,8 @@ const store = createStore({
     userInfo: state => state.userInfo,
     isAdmin: state => state.isAdmin,
     diaryList: state => state.diaryList,
-    currentDiary: state => state.currentDiary
+    currentDiary: state => state.currentDiary,
+    reportCache: state => state.reportCache
   }
 })
 
