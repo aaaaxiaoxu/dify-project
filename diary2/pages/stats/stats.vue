@@ -13,18 +13,18 @@
       </view>
       <view class="card-item">
         <text class="card-number">{{ topEmotion }}</text>
-        <text class="card-label">最常情绪</text>
+        <text class="card-label">主要情绪区间</text>
       </view>
       <view class="card-item">
         <text class="card-number">{{ avgScoreDisplay }}</text>
-        <text class="card-label">平均情绪指数</text>
+        <text class="card-label">平均情绪评分</text>
       </view>
     </view>
 
     <!-- 情感倾向分布饼图 -->
     <view class="chart-section">
       <view class="section-header">
-        <text class="section-title">情感倾向分布</text>
+        <text class="section-title">情绪评分分布</text>
       </view>
       <view class="chart-wrapper">
         <canvas
@@ -45,7 +45,10 @@
             class="legend-dot"
             :style="{ backgroundColor: emotionColors[item.emotion] || '#999' }"
           ></view>
-          <text class="legend-label">{{ item.emotion }}</text>
+          <view class="legend-main">
+            <text class="legend-label">{{ item.emotion }}</text>
+            <text v-if="item.range" class="legend-range">{{ item.range }}</text>
+          </view>
           <text class="legend-value">{{ item.count }}篇 ({{ piePercent(item.count) }})</text>
         </view>
       </view>
@@ -70,6 +73,13 @@
           >
             近30天
           </view>
+          <view
+            class="period-tab"
+            :class="{ active: trendPeriod === 'all' }"
+            @click="switchPeriod('all')"
+          >
+            全部
+          </view>
         </view>
       </view>
       <view class="chart-wrapper">
@@ -88,7 +98,7 @@
         </view>
         <view class="legend-item">
           <view class="legend-line" style="background-color: #FF6B6B;"></view>
-          <text class="legend-label">情绪指数</text>
+          <text class="legend-label">情绪评分</text>
         </view>
       </view>
     </view>
@@ -104,12 +114,12 @@ import config from '../../api/config.js'
 
 // 情绪颜色映射
 const EMOTION_COLORS = {
-  '开心': '#FFB347',
-  '兴奋': '#FF6B8A',
-  '感动': '#A78BFA',
-  '平静': '#34D399',
-  '思念': '#C084FC',
-  '忧郁': '#94A3B8',
+  '强烈积极': '#22C55E',
+  '偏积极': '#84CC16',
+  '中性': '#94A3B8',
+  '偏消极': '#FB923C',
+  '强烈消极': '#EF4444',
+  '待分析': '#CBD5E1',
 }
 
 // 备用颜色（如果出现未知情绪）
@@ -121,6 +131,7 @@ export default {
       canvasWidth: 300,
       pieData: [],
       totalDiaries: 0,
+      avgEmotionScore: null,
       trendPeriod: '7d',
       trendData: { dates: [], counts: [], scores: [] },
       emotionColors: EMOTION_COLORS,
@@ -139,10 +150,8 @@ export default {
     },
 
     avgScoreDisplay() {
-      const scores = (this.trendData.scores || []).filter((s) => s !== null)
-      if (!scores.length) return '--'
-      const avg = scores.reduce((a, b) => a + b, 0) / scores.length
-      return avg.toFixed(1)
+      if (this.avgEmotionScore === null) return '--'
+      return this.formatScore(this.avgEmotionScore)
     },
   },
 
@@ -176,6 +185,7 @@ export default {
         .then((data) => {
           this.pieData = data.items || []
           this.totalDiaries = data.total || 0
+          this.avgEmotionScore = this.normalizeScore(data.avg_score)
           this.$nextTick(() => {
             setTimeout(() => this.drawPieChart(), 150)
           })
@@ -204,6 +214,7 @@ export default {
     },
 
     switchPeriod(period) {
+      if (this.trendPeriod === period) return
       this.trendPeriod = period
       this.fetchEmotionTrend()
     },
@@ -211,6 +222,41 @@ export default {
     piePercent(count) {
       if (!this.totalDiaries) return '0%'
       return ((count / this.totalDiaries) * 100).toFixed(1) + '%'
+    },
+
+    normalizeScore(score) {
+      if (score === null || score === undefined || score === '') return null
+      const value = Number(score)
+      if (Number.isNaN(value)) return null
+      return Math.max(-1, Math.min(1, value))
+    },
+
+    formatScore(score) {
+      const value = this.normalizeScore(score)
+      if (value === null) return '--'
+      const fixed = value.toFixed(1)
+      return value > 0 ? `+${fixed}` : fixed
+    },
+
+    formatCountTick(value) {
+      if (value >= 10 || Number.isInteger(value)) {
+        return String(Math.round(value))
+      }
+      return value.toFixed(1)
+    },
+
+    formatTrendDateLabel(dateStr) {
+      const granularity = this.trendData.granularity || 'day'
+      const parts = String(dateStr || '').split('-')
+
+      if (granularity === 'month') {
+        if (parts.length < 2) return dateStr
+        const [year, month] = parts
+        return `${year.slice(-2)}/${month}`
+      }
+
+      if (parts.length < 3) return dateStr
+      return `${parts[1]}/${parts[2]}`
     },
 
     // =================== 饼图绘制 ===================
@@ -234,7 +280,7 @@ export default {
         return
       }
 
-      const total = this.totalDiaries
+      const total = this.pieData.reduce((sum, item) => sum + (Number(item.count) || 0), 0)
       let startAngle = -Math.PI / 2 // 从顶部开始
 
       this.pieData.forEach((item, index) => {
@@ -297,7 +343,7 @@ export default {
       const ctx = uni.createCanvasContext('lineChart', this)
       const w = this.canvasWidth
       const h = 300
-      const padding = { top: 30, right: 20, bottom: 50, left: 40 }
+      const padding = { top: 30, right: 42, bottom: 50, left: 44 }
       const chartW = w - padding.left - padding.right
       const chartH = h - padding.top - padding.bottom
 
@@ -317,12 +363,15 @@ export default {
       }
 
       const maxCount = Math.max(...counts, 1)
-      const maxScore = 5 // 情绪指数最大值固定为 5
+      const scoreMax = 1
+      const scoreMin = -1
+      const scoreRange = scoreMax - scoreMin
+      const getScoreY = (score) => padding.top + ((scoreMax - score) / scoreRange) * chartH
 
       // ---- 绘制网格线与 Y 轴刻度 ----
       ctx.setStrokeStyle('#E5E7EB')
       ctx.setLineWidth(0.5)
-      const gridLines = 5
+      const gridLines = 4
       for (let i = 0; i <= gridLines; i++) {
         const y = padding.top + (chartH / gridLines) * i
         ctx.beginPath()
@@ -331,17 +380,17 @@ export default {
         ctx.stroke()
 
         // 左侧 Y 轴刻度（日记数量）
-        const countLabel = Math.round(maxCount - (maxCount / gridLines) * i)
+        const countLabel = maxCount - (maxCount / gridLines) * i
         ctx.setFontSize(10)
         ctx.setFillStyle('#007AFF')
         ctx.setTextAlign('right')
-        ctx.fillText(countLabel.toString(), padding.left - 6, y + 4)
+        ctx.fillText(this.formatCountTick(countLabel), padding.left - 6, y + 4)
       }
 
-      // 右侧 Y 轴标签（情绪指数）
+      // 右侧 Y 轴标签（情绪评分）
       for (let i = 0; i <= gridLines; i++) {
         const y = padding.top + (chartH / gridLines) * i
-        const scoreLabel = (maxScore - (maxScore / gridLines) * i).toFixed(1)
+        const scoreLabel = (scoreMax - (scoreRange / gridLines) * i).toFixed(1)
         ctx.setFontSize(10)
         ctx.setFillStyle('#FF6B6B')
         ctx.setTextAlign('left')
@@ -356,29 +405,13 @@ export default {
         ctx.setFontSize(9)
         ctx.setFillStyle('#666')
         ctx.setTextAlign('center')
-        // 只显示月-日
-        const parts = dateStr.split('-')
-        ctx.fillText(parts[1] + '/' + parts[2], x, h - padding.bottom + 18)
+        ctx.fillText(this.formatTrendDateLabel(dateStr), x, h - padding.bottom + 18)
       })
 
-      // ---- 绘制日记数量柱状 + 折线 ----
-      const barWidth = Math.min(chartW / dates.length * 0.4, 16)
-
-      // 柱状图（日记数量）
-      counts.forEach((count, i) => {
-        const x = padding.left + (chartW / (dates.length - 1 || 1)) * i
-        const barH = (count / maxCount) * chartH
-        const barY = padding.top + chartH - barH
-
-        ctx.beginPath()
-        ctx.setFillStyle('rgba(0, 122, 255, 0.2)')
-        ctx.fillRect(x - barWidth / 2, barY, barWidth, barH)
-      })
-
-      // 日记数量折线
+      // ---- 日记数量折线 ----
       ctx.beginPath()
       ctx.setStrokeStyle('#007AFF')
-      ctx.setLineWidth(2)
+      ctx.setLineWidth(2.5)
       counts.forEach((count, i) => {
         const x = padding.left + (chartW / (dates.length - 1 || 1)) * i
         const y = padding.top + chartH - (count / maxCount) * chartH
@@ -395,47 +428,59 @@ export default {
         const x = padding.left + (chartW / (dates.length - 1 || 1)) * i
         const y = padding.top + chartH - (count / maxCount) * chartH
         ctx.beginPath()
-        ctx.arc(x, y, 3, 0, 2 * Math.PI)
+        ctx.arc(x, y, 3.5, 0, 2 * Math.PI)
         ctx.setFillStyle('#007AFF')
         ctx.fill()
         ctx.setStrokeStyle('#fff')
-        ctx.setLineWidth(1.5)
+        ctx.setLineWidth(2)
         ctx.stroke()
       })
 
-      // ---- 情绪指数折线 ----
-      const validScores = scores.map((s, i) => (s !== null ? { x: i, y: s } : null)).filter(Boolean)
+      // ---- 情绪评分折线 ----
+      const validScores = scores
+        .map((s, i) => {
+          const value = this.normalizeScore(s)
+          return value !== null ? { x: i, y: value } : null
+        })
+        .filter(Boolean)
 
       if (validScores.length > 1) {
         ctx.beginPath()
         ctx.setStrokeStyle('#FF6B6B')
-        ctx.setLineWidth(2)
-        ctx.setLineDash([6, 3])
-        validScores.forEach((pt, idx) => {
-          const x = padding.left + (chartW / (dates.length - 1 || 1)) * pt.x
-          const y = padding.top + chartH - (pt.y / maxScore) * chartH
-          if (idx === 0) {
-            ctx.moveTo(x, y)
-          } else {
-            ctx.lineTo(x, y)
+        ctx.setLineWidth(2.5)
+        ctx.setLineDash([8, 4])
+        let hasStarted = false
+        scores.forEach((score, index) => {
+          const value = this.normalizeScore(score)
+          if (value === null) {
+            hasStarted = false
+            return
           }
+          const x = padding.left + (chartW / (dates.length - 1 || 1)) * index
+          const y = getScoreY(value)
+          if (!hasStarted) {
+            ctx.moveTo(x, y)
+            hasStarted = true
+            return
+          }
+          ctx.lineTo(x, y)
         })
         ctx.stroke()
         ctx.setLineDash([])
-
-        // 情绪指数数据点
-        validScores.forEach((pt) => {
-          const x = padding.left + (chartW / (dates.length - 1 || 1)) * pt.x
-          const y = padding.top + chartH - (pt.y / maxScore) * chartH
-          ctx.beginPath()
-          ctx.arc(x, y, 3, 0, 2 * Math.PI)
-          ctx.setFillStyle('#FF6B6B')
-          ctx.fill()
-          ctx.setStrokeStyle('#fff')
-          ctx.setLineWidth(1.5)
-          ctx.stroke()
-        })
       }
+
+      // 情绪评分数据点
+      validScores.forEach((pt) => {
+        const x = padding.left + (chartW / (dates.length - 1 || 1)) * pt.x
+        const y = getScoreY(pt.y)
+        ctx.beginPath()
+        ctx.arc(x, y, 4, 0, 2 * Math.PI)
+        ctx.setFillStyle('#FF6B6B')
+        ctx.fill()
+        ctx.setStrokeStyle('#fff')
+        ctx.setLineWidth(2)
+        ctx.stroke()
+      })
 
       ctx.draw()
     },
@@ -552,6 +597,12 @@ export default {
   width: 45%;
 }
 
+.legend-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
 .legend-dot {
   width: 16rpx;
   height: 16rpx;
@@ -569,6 +620,11 @@ export default {
 .legend-label {
   font-size: 24rpx;
   color: #666;
+}
+
+.legend-range {
+  font-size: 20rpx;
+  color: #94A3B8;
 }
 
 .legend-value {
