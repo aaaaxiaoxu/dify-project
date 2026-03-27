@@ -7,6 +7,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
 fi
 
 export FLASK_CONFIG="${FLASK_CONFIG:-development}"
+export HOST="${HOST:-127.0.0.1}"
 export PORT="${PORT:-8080}"
 
 # macOS 上多线程 worker 偶发与 fork 相关崩溃，开发环境改为单线程更稳
@@ -15,13 +16,16 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   GUNICORN_THREADS=1
 fi
 
-# 开发环境推荐单 worker + reload，日志直接输出到终端
-exec python3 -m gunicorn \
-  --bind "127.0.0.1:${PORT}" \
-  --workers 1 \
-  --threads "${GUNICORN_THREADS}" \
-  --reload \
-  --access-logfile - \
-  --error-logfile - \
-  wsgi:app
+GUNICORN_ARGS=(
+  --bind "${HOST}:${PORT}"
+  --workers 1
+  --threads "${GUNICORN_THREADS}"
+  --access-logfile -
+  --error-logfile -
+)
 
+if [[ "${FLASK_CONFIG}" != "production" ]]; then
+  GUNICORN_ARGS+=(--reload)
+fi
+
+exec python3 -m gunicorn "${GUNICORN_ARGS[@]}" wsgi:app

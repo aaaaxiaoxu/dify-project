@@ -1,6 +1,7 @@
 // API配置文件
-// const BASE_URL = 'http://localhost:5000/api'
-const BASE_URL = 'http://localhost:8080/api'
+const DEV_BASE_URL = 'http://localhost:8080/api'
+const PROD_BASE_URL = 'http://114.215.183.91:8080/api'
+const BASE_URL = process.env.NODE_ENV === 'development' ? DEV_BASE_URL : PROD_BASE_URL
 
 export default {
   BASE_URL,

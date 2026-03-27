@@ -14,11 +14,13 @@ class Config:
     COS_BASE_URL = (os.environ.get('COS_BASE_URL') or 'https://diary-1387359490.cos.ap-guangzhou.myqcloud.com').rstrip('/')
     COS_MEDIA_PREFIX = (os.environ.get('COS_MEDIA_PREFIX') or 'media').strip('/')
     
-    # 数据库配置 - 请根据您的实际MySQL配置修改用户名、密码和数据库名
-    # 本地
-    # SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'mysql+pymysql://root:diary@python@localhost/travel_diary'
-    # 服务器
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'mysql+pymysql://root:diary%40python@47.110.157.154/travel_diary'
+    # 数据库配置
+    # 实际运行优先读取 backend2/.env 中的 DATABASE_URL
+    # 默认使用同机 MySQL，便于本地开发和服务器单机部署
+    SQLALCHEMY_DATABASE_URI = (
+        os.environ.get('DATABASE_URL')
+        or 'mysql+pymysql://root:dev_mysql_root_123@127.0.0.1:3307/travel_diary'
+    )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # 设置时区为北京时间
