@@ -84,6 +84,40 @@ def _ensure_user_admin_columns():
             if col_name not in columns:
                 raise
 
+
+def _ensure_ai_analysis_columns():
+    """自动补建 ai_analysis 表新增字段"""
+    inspector = inspect(db.engine)
+    if not inspector.has_table('ai_analysis'):
+        return
+
+    columns = {column["name"] for column in inspector.get_columns('ai_analysis')}
+    dialect = db.engine.dialect.name
+
+    column_specs = [
+        ('emotion_label', 'VARCHAR(50)', '情感标签'),
+        ('memory_point', 'TEXT', '记忆点'),
+    ]
+
+    for col_name, col_type, comment in column_specs:
+        if col_name in columns:
+            continue
+        if dialect == 'mysql':
+            ddl = (
+                f"ALTER TABLE ai_analysis "
+                f"ADD COLUMN {col_name} {col_type} NULL COMMENT '{comment}'"
+            )
+        else:
+            ddl = f"ALTER TABLE ai_analysis ADD COLUMN {col_name} {col_type}"
+        try:
+            with db.engine.begin() as conn:
+                conn.execute(text(ddl))
+        except Exception:
+            inspector = inspect(db.engine)
+            columns = {column["name"] for column in inspector.get_columns('ai_analysis')}
+            if col_name not in columns:
+                raise
+
 def create_app(config_name='default'):
     app = Flask(__name__)
     app.config.from_object(config[config_name])
@@ -121,5 +155,6 @@ def create_app(config_name='default'):
         db.create_all()
         _ensure_diary_is_draft_column()
         _ensure_user_admin_columns()
+        _ensure_ai_analysis_columns()
     
     return app

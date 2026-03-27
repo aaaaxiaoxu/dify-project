@@ -110,29 +110,45 @@ class DifyClient:
                 cleaned = re.sub(r'\s*```$', '', cleaned.strip())
                 try:
                     parsed = json.loads(cleaned)
+                    # 解析情感评分，确保在 -1.0 ~ 1.0 范围内
+                    raw_score = parsed.get("emotion_score")
+                    emotion_score = None
+                    if raw_score is not None:
+                        try:
+                            emotion_score = round(max(-1.0, min(1.0, float(raw_score))), 1)
+                        except (TypeError, ValueError):
+                            emotion_score = None
                     return {
-                        "emotion_analysis": parsed.get("emotion", ""),
+                        "emotion_label": parsed.get("emotion_label") or parsed.get("emotion", ""),
+                        "emotion_analysis": parsed.get("emotion_analysis") or parsed.get("emotion", ""),
+                        "emotion_score": emotion_score,
                         "keywords": parsed.get("keywords", []),
                         "travel_advice": parsed.get("travel_advice", ""),
+                        "memory_point": parsed.get("memory_point", ""),
                         "writing_style": parsed.get("writing_style", ""),
                         "writing_suggestion": parsed.get("memory_point", "")
                     }
                 except json.JSONDecodeError:
                     logger.warning("Dify analysis_result JSON 解析失败，原始内容: %s", analysis_raw[:200])
-                    # 解析失败时直接将原始文本作为情感分析结果返回
                     return {
+                        "emotion_label": "",
                         "emotion_analysis": analysis_raw,
+                        "emotion_score": None,
                         "keywords": [],
                         "travel_advice": "",
+                        "memory_point": "",
                         "writing_style": "",
                         "writing_suggestion": ""
                     }
 
             # 兼容旧格式：直接从 outputs 取字段
             return {
+                "emotion_label": outputs.get("emotion_label", ""),
                 "emotion_analysis": outputs.get("emotion_analysis", ""),
+                "emotion_score": outputs.get("emotion_score"),
                 "keywords": outputs.get("keywords", []),
                 "travel_advice": outputs.get("travel_advice", ""),
+                "memory_point": outputs.get("memory_point", ""),
                 "writing_style": outputs.get("writing_style", ""),
                 "writing_suggestion": outputs.get("writing_suggestion", "")
             }

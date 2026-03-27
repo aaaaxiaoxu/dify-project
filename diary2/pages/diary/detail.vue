@@ -46,16 +46,32 @@
       </view>
     </view>
     
-    <view class="ai-analysis" v-if="aiAnalysis">
+    <view class="ai-analysis" v-if="hasVisibleAnalysis(aiAnalysis)">
       <view class="analysis-header">
         <text class="analysis-title">🤖 AI智能分析</text>
       </view>
       <view class="analysis-content">
-        <view class="analysis-item">
-          <text class="analysis-label">情感分析:</text>
-          <text>{{ aiAnalysis.emotion_analysis }}</text>
+        <view class="analysis-overview" v-if="showAnalysisOverview(aiAnalysis)">
+          <view
+            v-if="aiAnalysis.emotion_label"
+            class="analysis-badge"
+            :class="analysisEmotionClass(aiAnalysis.emotion_label)"
+          >
+            <text>情绪标签：{{ aiAnalysis.emotion_label }}</text>
+          </view>
+          <view
+            v-if="hasEmotionScore(aiAnalysis.emotion_score)"
+            class="score-badge"
+            :class="scoreClass(aiAnalysis.emotion_score)"
+          >
+            <text>情绪评分：{{ formatEmotionScore(aiAnalysis.emotion_score) }}</text>
+          </view>
         </view>
-        <view class="analysis-item">
+        <view class="analysis-item" v-if="aiAnalysis.emotion_analysis">
+          <text class="analysis-label">情感分析:</text>
+          <text class="analysis-text">{{ aiAnalysis.emotion_analysis }}</text>
+        </view>
+        <view class="analysis-item" v-if="parseKeywords(aiAnalysis.keywords).length > 0">
           <text class="analysis-label">关键词:</text>
           <view class="keywords">
             <text 
@@ -67,9 +83,13 @@
             </text>
           </view>
         </view>
-        <view class="analysis-item">
+        <view class="analysis-item" v-if="aiAnalysis.travel_advice">
           <text class="analysis-label">旅行建议:</text>
-          <text>{{ aiAnalysis.travel_advice }}</text>
+          <text class="analysis-text">{{ aiAnalysis.travel_advice }}</text>
+        </view>
+        <view class="analysis-item" v-if="aiAnalysis.memory_point">
+          <text class="analysis-label">记忆点:</text>
+          <text class="analysis-text">{{ aiAnalysis.memory_point }}</text>
         </view>
       </view>
     </view>
@@ -276,11 +296,61 @@ export default {
     },
     
     parseKeywords(keywords) {
-      try {
-        return JSON.parse(keywords)
-      } catch (e) {
-        return typeof keywords === 'string' ? keywords.split(',') : []
+      if (Array.isArray(keywords)) {
+        return keywords.map(item => String(item).trim()).filter(Boolean)
       }
+      try {
+        const parsed = JSON.parse(keywords)
+        return Array.isArray(parsed) ? parsed.map(item => String(item).trim()).filter(Boolean) : []
+      } catch (e) {
+        return typeof keywords === 'string'
+          ? keywords.split(',').map(item => item.trim()).filter(Boolean)
+          : []
+      }
+    },
+
+    hasVisibleAnalysis(analysis) {
+      if (!analysis) return false
+      return Boolean(
+        analysis.emotion_label ||
+        this.hasEmotionScore(analysis.emotion_score) ||
+        analysis.emotion_analysis ||
+        this.parseKeywords(analysis.keywords).length ||
+        analysis.travel_advice ||
+        analysis.memory_point
+      )
+    },
+
+    showAnalysisOverview(analysis) {
+      return Boolean(
+        analysis &&
+        (
+          analysis.emotion_label ||
+          this.hasEmotionScore(analysis.emotion_score)
+        )
+      )
+    },
+
+    hasEmotionScore(score) {
+      return score !== null && score !== undefined && score !== '' && !Number.isNaN(Number(score))
+    },
+
+    formatEmotionScore(score) {
+      const value = Number(score)
+      if (Number.isNaN(value)) return ''
+      return value > 0 ? `+${value.toFixed(1)}` : value.toFixed(1)
+    },
+
+    scoreClass(score) {
+      const value = Number(score)
+      if (Number.isNaN(value)) return ''
+      if (value >= 0.3) return 'score-positive'
+      if (value <= -0.3) return 'score-negative'
+      return 'score-neutral'
+    },
+
+    analysisEmotionClass(label) {
+      return label ? `analysis-emotion-${label}` : ''
     },
     
     previewImage(imageUrl) {
@@ -547,10 +617,88 @@ export default {
   margin-bottom: 20rpx;
 }
 
+.analysis-overview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+}
+
+.analysis-badge,
+.score-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 10rpx 18rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.score-positive {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.score-neutral {
+  background: #eef2ff;
+  color: #3949ab;
+}
+
+.score-negative {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.analysis-emotion-开心 {
+  background-color: #fff3e0;
+  color: #ef6c00;
+}
+
+.analysis-emotion-感动 {
+  background-color: #ede7f6;
+  color: #6a1b9a;
+}
+
+.analysis-emotion-兴奋 {
+  background-color: #fce4ec;
+  color: #d81b60;
+}
+
+.analysis-emotion-平静 {
+  background-color: #e0f2f1;
+  color: #00796b;
+}
+
+.analysis-emotion-忧郁 {
+  background-color: #eceff1;
+  color: #455a64;
+}
+
+.analysis-emotion-思念 {
+  background-color: #f3e5f5;
+  color: #7b1fa2;
+}
+
+.analysis-emotion-中性,
+.analysis-emotion-平和,
+.analysis-emotion-复杂,
+.analysis-emotion-积极,
+.analysis-emotion-消极 {
+  background: #eef2ff;
+  color: #3949ab;
+}
+
 .analysis-label {
   font-weight: bold;
   margin-right: 15rpx;
   color: #007AFF;
+}
+
+.analysis-text {
+  display: block;
+  margin-top: 10rpx;
+  line-height: 1.7;
+  color: #444;
 }
 
 .keywords {

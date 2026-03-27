@@ -245,8 +245,61 @@
         </button>
       </view>
       
-      <view class="suggestion-content" v-if="aiSuggestion">
-        <text>{{ aiSuggestion }}</text>
+      <view class="suggestion-content" v-if="hasVisibleSuggestion(aiSuggestion)">
+        <view class="suggestion-overview" v-if="showSuggestionOverview(aiSuggestion)">
+          <view
+            v-if="aiSuggestion.emotion_label"
+            class="suggestion-badge"
+            :class="suggestionEmotionClass(aiSuggestion.emotion_label)"
+          >
+            <text>情绪标签：{{ aiSuggestion.emotion_label }}</text>
+          </view>
+          <view
+            v-if="hasEmotionScore(aiSuggestion.emotion_score)"
+            class="suggestion-score"
+            :class="scoreClass(aiSuggestion.emotion_score)"
+          >
+            <text>情绪评分：{{ formatEmotionScore(aiSuggestion.emotion_score) }}</text>
+          </view>
+        </view>
+
+        <view class="suggestion-block" v-if="aiSuggestion.emotion_analysis">
+          <text class="suggestion-label">情感分析</text>
+          <text class="suggestion-text">{{ aiSuggestion.emotion_analysis }}</text>
+        </view>
+
+        <view class="suggestion-block" v-if="normalizeKeywords(aiSuggestion.keywords).length > 0">
+          <text class="suggestion-label">关键词</text>
+          <view class="suggestion-tags">
+            <text
+              v-for="(keyword, index) in normalizeKeywords(aiSuggestion.keywords)"
+              :key="index"
+              class="suggestion-tag"
+            >
+              {{ keyword }}
+            </text>
+          </view>
+        </view>
+
+        <view class="suggestion-block" v-if="aiSuggestion.travel_advice">
+          <text class="suggestion-label">旅行建议</text>
+          <text class="suggestion-text">{{ aiSuggestion.travel_advice }}</text>
+        </view>
+
+        <view class="suggestion-block" v-if="aiSuggestion.memory_point">
+          <text class="suggestion-label">记忆点</text>
+          <text class="suggestion-text">{{ aiSuggestion.memory_point }}</text>
+        </view>
+
+        <view class="suggestion-block" v-if="aiSuggestion.writing_style">
+          <text class="suggestion-label">写作风格</text>
+          <text class="suggestion-text">{{ aiSuggestion.writing_style }}</text>
+        </view>
+
+        <view class="suggestion-block" v-if="showWritingSuggestion(aiSuggestion)">
+          <text class="suggestion-label">写作建议</text>
+          <text class="suggestion-text">{{ aiSuggestion.writing_suggestion }}</text>
+        </view>
       </view>
       
       <view class="suggestion-placeholder" v-else>
@@ -312,7 +365,7 @@ export default {
         { label: '🥺 思念', value: '思念' },
         { label: '😿 感伤', value: '感伤' }
       ],
-      aiSuggestion: '',
+      aiSuggestion: null,
       formats: {},
       editorCtx: null,
       _pendingEditorHtml: null,
@@ -937,6 +990,97 @@ export default {
     removeVideo(index) {
       this.diaryData.videos.splice(index, 1)
     },
+
+    normalizeKeywords(keywords) {
+      if (Array.isArray(keywords)) {
+        return keywords.map(item => String(item).trim()).filter(Boolean)
+      }
+      if (typeof keywords === 'string') {
+        const text = keywords.trim()
+        if (!text) return []
+        try {
+          const parsed = JSON.parse(text)
+          return Array.isArray(parsed) ? parsed.map(item => String(item).trim()).filter(Boolean) : []
+        } catch (e) {
+          return text.split(',').map(item => item.trim()).filter(Boolean)
+        }
+      }
+      return []
+    },
+
+    normalizeAiSuggestion(payload) {
+      if (!payload || typeof payload !== 'object') return null
+      const memoryPoint = payload.memory_point || ''
+      const writingSuggestion = payload.writing_suggestion || ''
+      return {
+        emotion_label: payload.emotion_label || '',
+        emotion_score: payload.emotion_score,
+        emotion_analysis: payload.emotion_analysis || '',
+        keywords: this.normalizeKeywords(payload.keywords),
+        travel_advice: payload.travel_advice || '',
+        memory_point: memoryPoint,
+        writing_style: payload.writing_style || '',
+        writing_suggestion: writingSuggestion
+      }
+    },
+
+    applyAiSuggestionResponse(res) {
+      this.aiSuggestion = this.normalizeAiSuggestion(res)
+      if (!this.hasVisibleSuggestion(this.aiSuggestion)) {
+        this.aiSuggestion = null
+      }
+    },
+
+    hasVisibleSuggestion(suggestion) {
+      if (!suggestion) return false
+      return Boolean(
+        suggestion.emotion_label ||
+        this.hasEmotionScore(suggestion.emotion_score) ||
+        suggestion.emotion_analysis ||
+        this.normalizeKeywords(suggestion.keywords).length ||
+        suggestion.travel_advice ||
+        suggestion.memory_point ||
+        suggestion.writing_style ||
+        this.showWritingSuggestion(suggestion)
+      )
+    },
+
+    showSuggestionOverview(suggestion) {
+      return Boolean(
+        suggestion &&
+        (
+          suggestion.emotion_label ||
+          this.hasEmotionScore(suggestion.emotion_score)
+        )
+      )
+    },
+
+    hasEmotionScore(score) {
+      return score !== null && score !== undefined && score !== '' && !Number.isNaN(Number(score))
+    },
+
+    formatEmotionScore(score) {
+      const value = Number(score)
+      if (Number.isNaN(value)) return ''
+      return value > 0 ? `+${value.toFixed(1)}` : value.toFixed(1)
+    },
+
+    scoreClass(score) {
+      const value = Number(score)
+      if (Number.isNaN(value)) return ''
+      if (value >= 0.3) return 'score-positive'
+      if (value <= -0.3) return 'score-negative'
+      return 'score-neutral'
+    },
+
+    suggestionEmotionClass(label) {
+      return label ? `suggestion-emotion-${label}` : ''
+    },
+
+    showWritingSuggestion(suggestion) {
+      if (!suggestion || !suggestion.writing_suggestion) return false
+      return suggestion.writing_suggestion !== suggestion.memory_point
+    },
     
     getAiSuggestion() {
       this.gettingSuggestion = true
@@ -951,31 +1095,11 @@ export default {
         })
           .then((res) => {
             this.gettingSuggestion = false
-            let suggestionText = res.emotion_analysis || ''
-
-            if (res.keywords && res.keywords.length > 0) {
-              const kw = Array.isArray(res.keywords) ? res.keywords : []
-              suggestionText += `\n\n关键词: ${kw.join(', ')}`
-            }
-
-            if (res.travel_advice) {
-              suggestionText += `\n\n旅行建议: ${res.travel_advice}`
-            }
-
-            if (res.writing_style) {
-              suggestionText += `\n\n写作风格: ${res.writing_style}`
-            }
-
-            if (res.writing_suggestion) {
-              suggestionText += `\n\n写作建议: ${res.writing_suggestion}`
-            }
-
-            this.aiSuggestion =
-              suggestionText || '你可以描述一下当时的感受和周围的环境。'
+            this.applyAiSuggestionResponse(res)
           })
           .catch(() => {
             this.gettingSuggestion = false
-            this.aiSuggestion = '你可以描述一下当时的感受和周围的环境。'
+            this.aiSuggestion = null
           })
         return
       }
@@ -994,30 +1118,11 @@ export default {
         })
           .then((res) => {
             this.gettingSuggestion = false
-            let suggestionText = res.emotion_analysis || ''
-
-            if (res.keywords && res.keywords.length > 0) {
-              suggestionText += `\n\n关键词: ${res.keywords.join(', ')}`
-            }
-
-            if (res.travel_advice) {
-              suggestionText += `\n\n旅行建议: ${res.travel_advice}`
-            }
-
-            if (res.writing_style) {
-              suggestionText += `\n\n写作风格: ${res.writing_style}`
-            }
-
-            if (res.writing_suggestion) {
-              suggestionText += `\n\n写作建议: ${res.writing_suggestion}`
-            }
-
-            this.aiSuggestion =
-              suggestionText || '你可以描述一下当时的感受和周围的环境。'
+            this.applyAiSuggestionResponse(res)
           })
           .catch(() => {
             this.gettingSuggestion = false
-            this.aiSuggestion = '你可以描述一下当时的感受和周围的环境。'
+            this.aiSuggestion = null
           })
       }
 
@@ -1531,8 +1636,110 @@ export default {
   padding: 20rpx;
   background: #f8f8f8;
   border-radius: 10rpx;
+}
+
+.suggestion-overview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+}
+
+.suggestion-badge,
+.suggestion-score {
+  display: inline-flex;
+  align-items: center;
+  padding: 10rpx 18rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.suggestion-block + .suggestion-block {
+  margin-top: 22rpx;
+}
+
+.suggestion-label {
+  display: block;
+  margin-bottom: 12rpx;
   font-size: 26rpx;
-  line-height: 1.5;
+  font-weight: 600;
+  color: #2563eb;
+}
+
+.suggestion-text {
+  display: block;
+  font-size: 26rpx;
+  line-height: 1.7;
+  color: #333;
+}
+
+.suggestion-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.suggestion-tag {
+  padding: 8rpx 16rpx;
+  border-radius: 999rpx;
+  background: linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%);
+  color: #fff;
+  font-size: 24rpx;
+}
+
+.score-positive {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.score-neutral {
+  background: #eef2ff;
+  color: #3949ab;
+}
+
+.score-negative {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.suggestion-emotion-开心 {
+  background-color: #fff3e0;
+  color: #ef6c00;
+}
+
+.suggestion-emotion-感动 {
+  background-color: #ede7f6;
+  color: #6a1b9a;
+}
+
+.suggestion-emotion-兴奋 {
+  background-color: #fce4ec;
+  color: #d81b60;
+}
+
+.suggestion-emotion-平静 {
+  background-color: #e0f2f1;
+  color: #00796b;
+}
+
+.suggestion-emotion-忧郁 {
+  background-color: #eceff1;
+  color: #455a64;
+}
+
+.suggestion-emotion-思念 {
+  background-color: #f3e5f5;
+  color: #7b1fa2;
+}
+
+.suggestion-emotion-中性,
+.suggestion-emotion-平和,
+.suggestion-emotion-复杂,
+.suggestion-emotion-积极,
+.suggestion-emotion-消极 {
+  background: #eef2ff;
+  color: #3949ab;
 }
 
 .suggestion-placeholder {

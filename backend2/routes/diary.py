@@ -3,7 +3,6 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import date, datetime
 from sqlalchemy.orm import selectinload
 import threading
-import json
 import logging
 
 from models import Diary, DiaryImage, DiaryVideo, AIAnalysis
@@ -49,19 +48,12 @@ def _trigger_ai_analysis(app, diary_id):
                 from routes.ai import analyze_diary_content
                 analysis_result = analyze_diary_content(diary_content)
 
-            # 存库
-            keywords_value = analysis_result.get("keywords", [])
-            if isinstance(keywords_value, list):
-                keywords_str = json.dumps(keywords_value, ensure_ascii=False)
-            else:
-                keywords_str = str(keywords_value)
+            from routes.ai import _build_ai_analysis_record
 
-            ai_record = AIAnalysis(
-                diary_id=diary_id,
-                emotion_analysis=analysis_result.get("emotion_analysis", ""),
-                keywords=keywords_str,
-                travel_advice=analysis_result.get("travel_advice", ""),
-            )
+            # 存库
+            AIAnalysis.query.filter_by(diary_id=diary_id).delete()
+            db.session.flush()
+            ai_record = _build_ai_analysis_record(diary_id, analysis_result)
             db.session.add(ai_record)
             db.session.commit()
             logger.info("AI 分析完成并存库: diary_id=%s", diary_id)

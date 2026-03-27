@@ -86,12 +86,15 @@ class DiaryVideo(db.Model):
 
 class AIAnalysis(db.Model):
     __tablename__ = 'ai_analysis'
-    
+
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=True, comment='分析ID')
     diary_id = db.Column(db.BigInteger, db.ForeignKey('diaries.id', ondelete='CASCADE'), nullable=False, unique=True, comment='日记ID')
     emotion_analysis = db.Column(db.Text, nullable=False, comment='情感分析结果')
+    emotion_score = db.Column(db.Float, nullable=True, comment='情感评分(-1.0到1.0，-1.0极度消极，0.0中性，1.0极度积极)')
+    emotion_label = db.Column(db.String(50), nullable=True, comment='情感标签')
     keywords = db.Column(db.Text, nullable=False, comment='关键词')
     travel_advice = db.Column(db.Text, nullable=False, comment='旅行建议')
+    memory_point = db.Column(db.Text, nullable=True, comment='记忆点')
     created_at = db.Column(db.DateTime, default=get_current_time, comment='创建时间')
     updated_at = db.Column(db.DateTime, default=get_current_time, onupdate=get_current_time, comment='更新时间')
 

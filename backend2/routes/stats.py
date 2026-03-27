@@ -6,25 +6,10 @@ from datetime import date, timedelta
 from sqlalchemy import func
 from collections import OrderedDict
 
-from models import Diary
+from models import Diary, AIAnalysis
 from extensions import db
 
 stats_bp = Blueprint('stats', __name__)
-
-# ---------- 情绪 → 数值映射 ----------
-EMOTION_SCORE = {
-    '开心': 5,
-    '兴奋': 5,
-    '感动': 4,
-    '平静': 3,
-    '思念': 2,
-    '忧郁': 1,
-}
-DEFAULT_SCORE = 3  # 未知情绪的默认分值
-
-
-def _emotion_to_score(emotion_label: str) -> int:
-    return EMOTION_SCORE.get(emotion_label, DEFAULT_SCORE)
 
 
 # ---------- 1. 情感倾向分布（饼图数据） ----------
@@ -85,9 +70,10 @@ def emotion_trend():
         start_date = today - timedelta(days=6)
         period_label = '7d'
 
-    # 查询该时间范围内的日记（非草稿）
-    diaries = (
-        Diary.query
+    # 查询该时间范围内的日记（非草稿），同时 join AI 分析结果取 emotion_score
+    rows = (
+        db.session.query(Diary.date, AIAnalysis.emotion_score)
+        .outerjoin(AIAnalysis, AIAnalysis.diary_id == Diary.id)
         .filter(
             Diary.user_id == current_user_id,
             Diary.is_draft == False,
@@ -101,16 +87,16 @@ def emotion_trend():
     day_map = OrderedDict()
     d = start_date
     while d <= today:
-        day_map[d.isoformat()] = {'count': 0, 'score_sum': 0, 'score_cnt': 0}
+        day_map[d.isoformat()] = {'count': 0, 'score_sum': 0.0, 'score_cnt': 0}
         d += timedelta(days=1)
 
-    for diary in diaries:
-        key = diary.date.isoformat() if diary.date else None
+    for diary_date, emotion_score in rows:
+        key = diary_date.isoformat() if diary_date else None
         if key and key in day_map:
             day_map[key]['count'] += 1
-            score = _emotion_to_score(diary.emotion)
-            day_map[key]['score_sum'] += score
-            day_map[key]['score_cnt'] += 1
+            if emotion_score is not None:
+                day_map[key]['score_sum'] += emotion_score
+                day_map[key]['score_cnt'] += 1
 
     dates = list(day_map.keys())
     counts = [v['count'] for v in day_map.values()]

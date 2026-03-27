@@ -82,12 +82,13 @@ def analyze_emotion(content):
     total_emotions = sum(emotion_counts.values())
     
     if total_emotions == 0:
-        return "中性", "这篇日记的情感表达较为含蓄，可以进一步描述当时的心情和感受。"
+        return "中性", "这篇日记的情感表达较为含蓄，可以进一步描述当时的心情和感受。", 0.0
     
     # 计算情感比例
     positive_ratio = emotion_counts["positive"] / total_emotions
     negative_ratio = emotion_counts["negative"] / total_emotions
     neutral_ratio = emotion_counts["neutral"] / total_emotions
+    emotion_score = round(max(-1.0, min(1.0, positive_ratio - negative_ratio)), 1)
     
     # 确定主要情感
     if positive_ratio >= 0.5:
@@ -104,7 +105,7 @@ def analyze_emotion(content):
         main_emotion = "复杂"
         description = "这篇日记表达了作者复杂多变的情感，生活体验丰富多彩。"
     
-    return main_emotion, description
+    return main_emotion, description, emotion_score
 
 def identify_location_type(content):
     """
@@ -243,9 +244,12 @@ def analyze_diary_content(content):
     plain = html_to_plain_text(content or "")
     if not plain or not plain.strip():
         return {
+            "emotion_label": "中性",
             "emotion_analysis": "未提供内容，无法进行情感分析。",
+            "emotion_score": 0.0,
             "keywords": [],
             "travel_advice": "请提供详细的旅行日记内容以获取个性化建议。",
+            "memory_point": "",
             "writing_style": "未知",
             "writing_suggestion": "请提供内容以获取写作风格分析。"
         }
@@ -254,7 +258,7 @@ def analyze_diary_content(content):
     processed_content = preprocess_text(plain)
     
     # 1. 情感分析
-    main_emotion, emotion_description = analyze_emotion(processed_content)
+    main_emotion, emotion_description, emotion_score = analyze_emotion(processed_content)
     
     # 2. 关键词提取
     keywords = extract_keywords_tfidf(processed_content, topK=5)
@@ -272,12 +276,68 @@ def analyze_diary_content(content):
     writing_style, writing_suggestion = analyze_writing_style(plain)
     
     return {
+        "emotion_label": main_emotion,
         "emotion_analysis": emotion_description,
+        "emotion_score": emotion_score,
         "keywords": keywords,
         "travel_advice": travel_advice,
+        "memory_point": "",
         "writing_style": writing_style,
         "writing_suggestion": writing_suggestion
     }
+
+
+def _serialize_keywords_for_storage(keywords_value):
+    if isinstance(keywords_value, list):
+        return json.dumps(keywords_value, ensure_ascii=False)
+    if keywords_value is None:
+        return "[]"
+    return str(keywords_value)
+
+
+def _parse_keywords_from_storage(keywords_value):
+    if isinstance(keywords_value, list):
+        return keywords_value
+    if isinstance(keywords_value, str):
+        text = keywords_value.strip()
+        if not text:
+            return []
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                return parsed
+        except (json.JSONDecodeError, TypeError):
+            return [item.strip() for item in text.split(',') if item.strip()]
+    return []
+
+
+def _get_memory_point_value(analysis_result):
+    return (analysis_result.get("memory_point") or "").strip()
+
+
+def _serialize_ai_analysis_record(record):
+    memory_point = record.memory_point or ""
+    return {
+        "emotion_analysis": record.emotion_analysis,
+        "emotion_score": record.emotion_score,
+        "emotion_label": record.emotion_label or "",
+        "keywords": _parse_keywords_from_storage(record.keywords),
+        "travel_advice": record.travel_advice,
+        "memory_point": memory_point,
+        "writing_suggestion": memory_point,
+    }
+
+
+def _build_ai_analysis_record(diary_id, analysis_result):
+    return AIAnalysis(
+        diary_id=diary_id,
+        emotion_analysis=analysis_result.get("emotion_analysis", ""),
+        emotion_score=analysis_result.get("emotion_score"),
+        emotion_label=(analysis_result.get("emotion_label") or "").strip() or None,
+        keywords=_serialize_keywords_for_storage(analysis_result.get("keywords", [])),
+        travel_advice=analysis_result.get("travel_advice", ""),
+        memory_point=_get_memory_point_value(analysis_result) or None,
+    )
 
 @ai_bp.route('/analysis', methods=['POST'])
 @jwt_required()
@@ -295,16 +355,13 @@ def ai_analysis():
 
     # ---- 1. 查库：已有分析结果则直接返回 ----
     existing = AIAnalysis.query.filter_by(diary_id=diary_id).first()
-    if existing:
-        try:
-            keywords = json.loads(existing.keywords)
-        except (json.JSONDecodeError, TypeError):
-            keywords = existing.keywords
-        return jsonify({
-            "emotion_analysis": existing.emotion_analysis,
-            "keywords": keywords,
-            "travel_advice": existing.travel_advice,
-        }), 200
+    needs_backfill = bool(
+        existing and
+        not (existing.emotion_label or '').strip() and
+        not (existing.memory_point or '').strip()
+    )
+    if existing and not needs_backfill:
+        return jsonify(_serialize_ai_analysis_record(existing)), 200
 
     # ---- 2. 查询日记，获取文字、图片、视频 ----
     user_id = get_jwt_identity()
@@ -333,18 +390,11 @@ def ai_analysis():
         analysis_result = analyze_diary_content(diary_content)
 
     # ---- 4. 存库 ----
-    keywords_value = analysis_result.get("keywords", [])
-    if isinstance(keywords_value, list):
-        keywords_str = json.dumps(keywords_value, ensure_ascii=False)
-    else:
-        keywords_str = str(keywords_value)
+    if existing:
+        db.session.delete(existing)
+        db.session.flush()
 
-    ai_record = AIAnalysis(
-        diary_id=diary_id,
-        emotion_analysis=analysis_result.get("emotion_analysis", ""),
-        keywords=keywords_str,
-        travel_advice=analysis_result.get("travel_advice", ""),
-    )
+    ai_record = _build_ai_analysis_record(diary_id, analysis_result)
     db.session.add(ai_record)
     db.session.commit()
 
@@ -388,18 +438,7 @@ def ai_analysis_refresh():
         analysis_result = analyze_diary_content(diary_content)
 
     # 存入新记录
-    keywords_value = analysis_result.get("keywords", [])
-    if isinstance(keywords_value, list):
-        keywords_str = json.dumps(keywords_value, ensure_ascii=False)
-    else:
-        keywords_str = str(keywords_value)
-
-    ai_record = AIAnalysis(
-        diary_id=diary_id,
-        emotion_analysis=analysis_result.get("emotion_analysis", ""),
-        keywords=keywords_str,
-        travel_advice=analysis_result.get("travel_advice", ""),
-    )
+    ai_record = _build_ai_analysis_record(diary_id, analysis_result)
     db.session.add(ai_record)
     db.session.commit()
 
