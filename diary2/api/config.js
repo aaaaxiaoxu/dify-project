@@ -1,7 +1,6 @@
 // API配置文件
-const DEV_BASE_URL = 'http://localhost:8080/api'
-const PROD_BASE_URL = 'http://114.215.183.91:8080/api'
-const BASE_URL = process.env.NODE_ENV === 'development' ? DEV_BASE_URL : PROD_BASE_URL
+// 本地测试和生产环境统一走服务器 Nginx 反向代理接口
+const BASE_URL = 'http://114.215.183.91/api'
 
 export default {
   BASE_URL,
