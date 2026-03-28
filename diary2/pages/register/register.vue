@@ -41,6 +41,15 @@
           v-model="formData.confirmPassword"
         />
       </view>
+
+      <view class="input-group">
+        <textarea
+          class="form-textarea"
+          maxlength="200"
+          placeholder="个人简介（选填）"
+          v-model="formData.bio"
+        />
+      </view>
       
       <button class="register-btn" @click="handleRegister">
         <text>注册</text>
@@ -64,7 +73,8 @@ export default {
         username: '',
         phone: '',
         password: '',
-        confirmPassword: ''
+        confirmPassword: '',
+        bio: ''
       }
     }
   },
@@ -114,7 +124,8 @@ export default {
         data: {
           username: this.formData.username,
           phone: this.formData.phone,
-          password: this.formData.password
+          password: this.formData.password,
+          bio: (this.formData.bio || '').trim()
         }
       }).then(res => {
         uni.hideLoading()
@@ -195,6 +206,18 @@ export default {
   box-shadow: 0 4rpx 10rpx rgba(0,0,0,0.05);
   box-sizing: border-box;
   text-align: left;
+}
+
+.form-textarea {
+  width: 100%;
+  min-height: 180rpx;
+  padding: 24rpx 30rpx;
+  background: #fff;
+  border-radius: 15rpx;
+  font-size: 30rpx;
+  line-height: 1.6;
+  box-shadow: 0 4rpx 10rpx rgba(0,0,0,0.05);
+  box-sizing: border-box;
 }
 
 .register-btn {

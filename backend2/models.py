@@ -18,6 +18,8 @@ class User(db.Model):
     password = db.Column(db.String(255), nullable=False, comment='密码')
     nickname = db.Column(db.String(100), nullable=False, comment='昵称')
     phone = db.Column(db.String(20), nullable=False, unique=True, comment='手机号')
+    avatar_url = db.Column(db.String(500), nullable=True, comment='头像URL')
+    bio = db.Column(db.Text, nullable=True, comment='个人简介')
     is_admin = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false(), comment='是否管理员')
     is_frozen = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false(), comment='是否冻结')
     created_at = db.Column(db.DateTime, default=get_current_time, comment='创建时间')

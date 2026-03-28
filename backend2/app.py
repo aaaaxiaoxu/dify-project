@@ -56,8 +56,8 @@ def _ensure_diary_is_draft_column():
             raise
 
 
-def _ensure_user_admin_columns():
-    """自动补建 users 表的 is_admin 和 is_frozen 列"""
+def _ensure_user_columns():
+    """自动补建 users 表新增字段"""
     inspector = inspect(db.engine)
     if not inspector.has_table('users'):
         return
@@ -65,16 +65,32 @@ def _ensure_user_admin_columns():
     columns = {column["name"] for column in inspector.get_columns('users')}
     dialect = db.engine.dialect.name
 
-    for col_name, comment in [('is_admin', '是否管理员'), ('is_frozen', '是否冻结')]:
+    column_specs = [
+        ('avatar_url', 'VARCHAR(500)', '头像URL', True),
+        ('bio', 'TEXT', '个人简介', True),
+        ('is_admin', 'BOOLEAN', '是否管理员', False),
+        ('is_frozen', 'BOOLEAN', '是否冻结', False),
+    ]
+
+    for col_name, col_type, comment, nullable in column_specs:
         if col_name in columns:
             continue
         if dialect == 'mysql':
-            ddl = (
-                f"ALTER TABLE users "
-                f"ADD COLUMN {col_name} BOOLEAN NOT NULL DEFAULT FALSE COMMENT '{comment}'"
-            )
+            if nullable:
+                ddl = (
+                    f"ALTER TABLE users "
+                    f"ADD COLUMN {col_name} {col_type} NULL COMMENT '{comment}'"
+                )
+            else:
+                ddl = (
+                    f"ALTER TABLE users "
+                    f"ADD COLUMN {col_name} {col_type} NOT NULL DEFAULT FALSE COMMENT '{comment}'"
+                )
         else:
-            ddl = f"ALTER TABLE users ADD COLUMN {col_name} BOOLEAN NOT NULL DEFAULT 0"
+            if nullable:
+                ddl = f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"
+            else:
+                ddl = f"ALTER TABLE users ADD COLUMN {col_name} {col_type} NOT NULL DEFAULT 0"
         try:
             with db.engine.begin() as conn:
                 conn.execute(text(ddl))
@@ -156,7 +172,7 @@ def create_app(config_name='default'):
     with app.app_context():
         db.create_all()
         _ensure_diary_is_draft_column()
-        _ensure_user_admin_columns()
+        _ensure_user_columns()
         _ensure_ai_analysis_columns()
     
     return app
