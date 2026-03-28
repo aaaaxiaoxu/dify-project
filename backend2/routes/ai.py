@@ -5,6 +5,7 @@ import jieba.analyse
 import re
 import json
 from collections import Counter
+from sqlalchemy.exc import IntegrityError
 from extensions import dify_client, db
 from models import Diary, AIAnalysis
 from utils.html_sanitize import html_to_plain_text
@@ -339,6 +340,37 @@ def _build_ai_analysis_record(diary_id, analysis_result):
         memory_point=_get_memory_point_value(analysis_result) or None,
     )
 
+
+def _assign_ai_analysis_record(record, analysis_result):
+    record.emotion_analysis = analysis_result.get("emotion_analysis", "")
+    record.emotion_score = analysis_result.get("emotion_score")
+    record.emotion_label = (analysis_result.get("emotion_label") or "").strip() or None
+    record.keywords = _serialize_keywords_for_storage(analysis_result.get("keywords", []))
+    record.travel_advice = analysis_result.get("travel_advice", "")
+    record.memory_point = _get_memory_point_value(analysis_result) or None
+    return record
+
+
+def _save_ai_analysis_record(diary_id, analysis_result):
+    record = AIAnalysis.query.filter_by(diary_id=diary_id).first()
+    if record:
+        _assign_ai_analysis_record(record, analysis_result)
+    else:
+        record = _build_ai_analysis_record(diary_id, analysis_result)
+        db.session.add(record)
+
+    try:
+        db.session.commit()
+        return record
+    except IntegrityError:
+        db.session.rollback()
+        record = AIAnalysis.query.filter_by(diary_id=diary_id).first()
+        if not record:
+            raise
+        _assign_ai_analysis_record(record, analysis_result)
+        db.session.commit()
+        return record
+
 @ai_bp.route('/analysis', methods=['POST'])
 @jwt_required()
 def ai_analysis():
@@ -390,13 +422,7 @@ def ai_analysis():
         analysis_result = analyze_diary_content(diary_content)
 
     # ---- 4. 存库 ----
-    if existing:
-        db.session.delete(existing)
-        db.session.flush()
-
-    ai_record = _build_ai_analysis_record(diary_id, analysis_result)
-    db.session.add(ai_record)
-    db.session.commit()
+    _save_ai_analysis_record(diary_id, analysis_result)
 
     return jsonify(analysis_result), 200
 
@@ -410,10 +436,6 @@ def ai_analysis_refresh():
 
     if not diary_id:
         return jsonify({"error": "缺少 diary_id 参数"}), 400
-
-    # 删除旧的分析记录
-    AIAnalysis.query.filter_by(diary_id=diary_id).delete()
-    db.session.commit()
 
     # 查询日记
     user_id = get_jwt_identity()
@@ -438,8 +460,6 @@ def ai_analysis_refresh():
         analysis_result = analyze_diary_content(diary_content)
 
     # 存入新记录
-    ai_record = _build_ai_analysis_record(diary_id, analysis_result)
-    db.session.add(ai_record)
-    db.session.commit()
+    _save_ai_analysis_record(diary_id, analysis_result)
 
     return jsonify(analysis_result), 200

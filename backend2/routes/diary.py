@@ -48,14 +48,10 @@ def _trigger_ai_analysis(app, diary_id):
                 from routes.ai import analyze_diary_content
                 analysis_result = analyze_diary_content(diary_content)
 
-            from routes.ai import _build_ai_analysis_record
+            from routes.ai import _save_ai_analysis_record
 
             # 存库
-            AIAnalysis.query.filter_by(diary_id=diary_id).delete()
-            db.session.flush()
-            ai_record = _build_ai_analysis_record(diary_id, analysis_result)
-            db.session.add(ai_record)
-            db.session.commit()
+            _save_ai_analysis_record(diary_id, analysis_result)
             logger.info("AI 分析完成并存库: diary_id=%s", diary_id)
 
         except Exception as e:
