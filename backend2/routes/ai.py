@@ -288,6 +288,39 @@ def analyze_diary_content(content):
     }
 
 
+def _build_local_writing_feedback(content):
+    plain = html_to_plain_text(content or "")
+    if not plain or not plain.strip():
+        return {
+            "writing_style": "未知",
+            "writing_suggestion": "请提供内容以获取写作风格分析。"
+        }
+
+    writing_style, writing_suggestion = analyze_writing_style(plain)
+    return {
+        "writing_style": writing_style,
+        "writing_suggestion": writing_suggestion
+    }
+
+
+def _merge_writing_feedback(result_payload, content):
+    payload = dict(result_payload or {})
+    local_feedback = _build_local_writing_feedback(content)
+
+    if not payload.get("writing_style"):
+        payload["writing_style"] = local_feedback["writing_style"]
+    if not payload.get("writing_suggestion"):
+        payload["writing_suggestion"] = local_feedback["writing_suggestion"]
+
+    plain = html_to_plain_text(content or "")
+    writing_text = plain if plain.strip() else (content or "")
+    dify_writing = dify_client.generate_writing_suggestion(writing_text)
+    if dify_writing:
+        payload["writing_suggestion"] = dify_writing
+
+    return payload
+
+
 def _serialize_keywords_for_storage(keywords_value):
     if isinstance(keywords_value, list):
         return json.dumps(keywords_value, ensure_ascii=False)
@@ -325,7 +358,8 @@ def _serialize_ai_analysis_record(record):
         "keywords": _parse_keywords_from_storage(record.keywords),
         "travel_advice": record.travel_advice,
         "memory_point": memory_point,
-        "writing_suggestion": memory_point,
+        "writing_style": "",
+        "writing_suggestion": "",
     }
 
 
@@ -385,6 +419,15 @@ def ai_analysis():
         analysis_result = analyze_diary_content(diary_content)
         return jsonify(analysis_result), 200
 
+    user_id = get_jwt_identity()
+    diary = Diary.query.filter_by(id=diary_id, user_id=user_id).first()
+    if not diary:
+        return jsonify({"error": "日记不存在"}), 404
+
+    diary_content = diary.content or ''
+    plain_for_llm = html_to_plain_text(diary_content)
+    writing_source = plain_for_llm if plain_for_llm.strip() else diary_content
+
     # ---- 1. 查库：已有分析结果则直接返回 ----
     existing = AIAnalysis.query.filter_by(diary_id=diary_id).first()
     needs_backfill = bool(
@@ -393,16 +436,10 @@ def ai_analysis():
         not (existing.memory_point or '').strip()
     )
     if existing and not needs_backfill:
-        return jsonify(_serialize_ai_analysis_record(existing)), 200
+        existing_payload = _serialize_ai_analysis_record(existing)
+        return jsonify(_merge_writing_feedback(existing_payload, writing_source)), 200
 
-    # ---- 2. 查询日记，获取文字、图片、视频 ----
-    user_id = get_jwt_identity()
-    diary = Diary.query.filter_by(id=diary_id, user_id=user_id).first()
-    if not diary:
-        return jsonify({"error": "日记不存在"}), 404
-
-    diary_content = diary.content or ''
-    plain_for_llm = html_to_plain_text(diary_content)
+    # ---- 2. 获取文字、图片、视频 ----
 
     # 收集图片和视频 URL
     image_urls = [img.image_url for img in diary.images] if diary.images else []
@@ -420,6 +457,8 @@ def ai_analysis():
     else:
         # Dify 不可用时回退到本地分析
         analysis_result = analyze_diary_content(diary_content)
+
+    analysis_result = _merge_writing_feedback(analysis_result, writing_source)
 
     # ---- 4. 存库 ----
     _save_ai_analysis_record(diary_id, analysis_result)
@@ -445,6 +484,7 @@ def ai_analysis_refresh():
 
     diary_content = diary.content or ''
     plain_for_llm = html_to_plain_text(diary_content)
+    writing_source = plain_for_llm if plain_for_llm.strip() else diary_content
     image_urls = [img.image_url for img in diary.images] if diary.images else []
     video_urls = [vid.video_url for vid in diary.videos] if diary.videos else []
 
@@ -458,6 +498,8 @@ def ai_analysis_refresh():
         analysis_result = dify_result
     else:
         analysis_result = analyze_diary_content(diary_content)
+
+    analysis_result = _merge_writing_feedback(analysis_result, writing_source)
 
     # 存入新记录
     _save_ai_analysis_record(diary_id, analysis_result)

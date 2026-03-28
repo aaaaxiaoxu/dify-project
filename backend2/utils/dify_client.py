@@ -10,12 +10,16 @@ class DifyClient:
     def __init__(self):
         self.api_key = None
         self.api_url = None
+        self.writing_api_key = None
+        self.writing_api_url = None
         self.report_api_key = None
         self.report_api_url = None
         
     def init_app(self, app):
         self.api_key = app.config.get('DIFY_API_KEY')
         self.api_url = app.config.get('DIFY_API_URL')
+        self.writing_api_key = app.config.get('DIFY_WRITING_API_KEY') or self.api_key
+        self.writing_api_url = app.config.get('DIFY_WRITING_API_URL') or self.api_url
         self.report_api_key = app.config.get('DIFY_REPORT_API_KEY') or self.api_key
         self.report_api_url = app.config.get('DIFY_REPORT_API_URL') or self.api_url
 
@@ -118,8 +122,8 @@ class DifyClient:
             logger.error("Dify 返回解析失败: %s", e)
             return None
 
-    def _parse_json_output(self, raw_value):
-        if isinstance(raw_value, dict):
+    def _parse_json_value(self, raw_value):
+        if isinstance(raw_value, (dict, list)):
             return raw_value
         if not isinstance(raw_value, str):
             return None
@@ -127,10 +131,35 @@ class DifyClient:
         cleaned = re.sub(r'^```(?:json)?\s*', '', raw_value.strip())
         cleaned = re.sub(r'\s*```$', '', cleaned.strip())
         try:
-            parsed = json.loads(cleaned)
-            return parsed if isinstance(parsed, dict) else None
+            return json.loads(cleaned)
         except json.JSONDecodeError:
             return None
+
+    def _parse_json_output(self, raw_value):
+        parsed = self._parse_json_value(raw_value)
+        return parsed if isinstance(parsed, dict) else None
+
+    def _normalize_suggestions_text(self, raw_value):
+        parsed = self._parse_json_value(raw_value)
+        suggestions = []
+
+        if isinstance(parsed, list):
+            suggestions = [str(item).strip() for item in parsed if str(item).strip()]
+        elif isinstance(parsed, dict):
+            nested = parsed.get('suggestions') or parsed.get('writing_suggestion') or parsed.get('result')
+            if isinstance(nested, list):
+                suggestions = [str(item).strip() for item in nested if str(item).strip()]
+            elif isinstance(nested, str) and nested.strip():
+                suggestions = [nested.strip()]
+        elif isinstance(raw_value, list):
+            suggestions = [str(item).strip() for item in raw_value if str(item).strip()]
+        elif isinstance(raw_value, str) and raw_value.strip():
+            suggestions = [raw_value.strip()]
+
+        if not suggestions:
+            return ''
+
+        return '\n'.join(f'{idx + 1}. {item}' for idx, item in enumerate(suggestions))
 
     def analyze_diary_content(self, content, image_urls=None, video_urls=None):
         """
@@ -185,7 +214,7 @@ class DifyClient:
                         "travel_advice": parsed.get("travel_advice", ""),
                         "memory_point": parsed.get("memory_point", ""),
                         "writing_style": parsed.get("writing_style", ""),
-                        "writing_suggestion": parsed.get("memory_point", "")
+                        "writing_suggestion": parsed.get("writing_suggestion", "")
                     }
                 else:
                     logger.warning("Dify analysis_result JSON 解析失败，原始内容: %s", analysis_raw[:200])
@@ -214,6 +243,38 @@ class DifyClient:
         except Exception as e:
             logger.error("Dify 返回解析失败: %s", e)
             return None
+
+    def generate_writing_suggestion(self, content):
+        if not self._has_valid_workflow_config(self.writing_api_key, self.writing_api_url):
+            logger.warning("Dify 写作建议工作流未配置，跳过")
+            return None
+
+        plain = (content or '').strip()
+        if not plain:
+            return None
+
+        resp, error = self._run_workflow(
+            self.writing_api_key,
+            self.writing_api_url,
+            {'diary_text': plain},
+            timeout=60,
+            user='travel_writing_user',
+        )
+        if resp is None:
+            logger.warning("Dify 写作建议工作流失败: %s", error)
+            return None
+
+        outputs = self._extract_outputs(resp)
+        if not outputs:
+            return None
+
+        suggestions_raw = (
+            outputs.get('suggestions')
+            or outputs.get('writing_suggestion')
+            or outputs.get('result')
+        )
+        suggestion_text = self._normalize_suggestions_text(suggestions_raw)
+        return suggestion_text or None
 
     def generate_travel_report(self, report_context, start_date, end_date, report_style='warm'):
         """

@@ -1759,6 +1759,7 @@ export default {
   font-size: 26rpx;
   line-height: 1.7;
   color: #333;
+  white-space: pre-line;
 }
 
 .suggestion-tags {
