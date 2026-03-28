@@ -89,6 +89,37 @@ def login():
         }
     }), 200
 
+
+@user_bp.route('/reset-password', methods=['POST'])
+def reset_password():
+    data = request.get_json() or {}
+    account = (data.get('account') or data.get('username') or '').strip()
+    phone = (data.get('phone') or '').strip()
+    new_password = data.get('new_password') or data.get('password') or ''
+
+    if not account or not phone or not new_password:
+        return jsonify({"msg": "账号、手机号和新密码不能为空"}), 400
+
+    user = User.query.filter(
+        or_(User.username == account, User.phone == account)
+    ).first()
+
+    if user is None:
+        return jsonify({"msg": "账号不存在"}), 404
+
+    if user.phone != phone:
+        return jsonify({"msg": "手机号校验失败"}), 400
+
+    user.password = new_password
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"msg": "密码重置失败，请稍后重试"}), 500
+
+    return jsonify({"msg": "密码重置成功，请使用新密码登录"}), 200
+
 @user_bp.route('/profile', methods=['GET'])
 @jwt_required()
 def get_profile():

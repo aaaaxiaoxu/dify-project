@@ -29,6 +29,7 @@
       </button>
       
       <view class="form-footer">
+        <text @click="goToResetPassword">忘记密码？</text>
         <text @click="goToRegister">还没有账号？立即注册</text>
       </view>
     </view>
@@ -137,6 +138,12 @@ export default {
       uni.navigateTo({
         url: '/pages/register/register'
       })
+    },
+
+    goToResetPassword() {
+      uni.navigateTo({
+        url: '/pages/password/reset'
+      })
     }
   }
 }
@@ -213,7 +220,9 @@ export default {
 }
 
 .form-footer {
-  text-align: center;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-top: 50rpx;
   color: #007AFF;
   font-size: 28rpx;

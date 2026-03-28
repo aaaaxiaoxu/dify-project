@@ -8,6 +8,7 @@ export default {
   // 用户相关接口
   USER_REGISTER: BASE_URL + '/user/register',
   USER_LOGIN: BASE_URL + '/user/login',
+  USER_RESET_PASSWORD: BASE_URL + '/user/reset-password',
   USER_PROFILE: BASE_URL + '/user/profile',
   
   // 日记相关接口
