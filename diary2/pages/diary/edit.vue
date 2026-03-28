@@ -661,6 +661,71 @@ export default {
       return typeof value === 'string' && /^https?:\/\//i.test(value)
     },
 
+    compressDiaryImage(filePath) {
+      return new Promise((resolve) => {
+        if (!filePath) {
+          resolve('')
+          return
+        }
+
+        // #ifdef H5
+        resolve(filePath)
+        return
+        // #endif
+
+        const fallbackToOriginal = () => resolve(filePath)
+
+        uni.getImageInfo({
+          src: filePath,
+          success: (info) => {
+            const width = Number(info && info.width) || 0
+            const height = Number(info && info.height) || 0
+            const maxEdge = 1600
+
+            if (!width || !height || Math.max(width, height) <= maxEdge) {
+              fallbackToOriginal()
+              return
+            }
+
+            let targetWidth = width
+            let targetHeight = height
+
+            if (width >= height) {
+              targetWidth = maxEdge
+              targetHeight = Math.max(1, Math.round((height * maxEdge) / width))
+            } else {
+              targetHeight = maxEdge
+              targetWidth = Math.max(1, Math.round((width * maxEdge) / height))
+            }
+
+            uni.compressImage({
+              src: filePath,
+              quality: 70,
+              width: `${targetWidth}px`,
+              height: `${targetHeight}px`,
+              success: (res) => {
+                resolve((res && res.tempFilePath) || filePath)
+              },
+              fail: fallbackToOriginal
+            })
+          },
+          fail: fallbackToOriginal
+        })
+      })
+    },
+
+    async prepareSelectedImages(filePaths = []) {
+      const prepared = []
+      for (let i = 0; i < filePaths.length; i += 1) {
+        const filePath = filePaths[i]
+        const nextPath = await this.compressDiaryImage(filePath)
+        if (nextPath) {
+          prepared.push(nextPath)
+        }
+      }
+      return prepared
+    },
+
     uploadMedia(filePath, mediaType) {
       const token = this.$store && this.$store.state ? this.$store.state.token : ''
       return new Promise((resolve, reject) => {
@@ -750,22 +815,31 @@ export default {
       }
       uni.chooseImage({
         count: 1,
-        success: (res) => {
+        sizeType: ['compressed'],
+        sourceType: ['album', 'camera'],
+        success: async (res) => {
           const path = res.tempFilePaths && res.tempFilePaths[0]
           if (!path) return
-          uni.showLoading({ title: '上传中' })
-          this.uploadEditorImage(path)
-            .then((url) => {
+          uni.showLoading({ title: '处理图片中', mask: true })
+          try {
+            const prepared = await this.prepareSelectedImages([path])
+            const uploadPath = prepared[0]
+            if (!uploadPath) {
               uni.hideLoading()
-              this.editorCtx.insertImage({
-                src: url,
-                alt: '日记插图'
-              })
+              uni.showToast({ title: '图片处理失败', icon: 'none' })
+              return
+            }
+            uni.showLoading({ title: '上传中', mask: true })
+            const url = await this.uploadEditorImage(uploadPath)
+            uni.hideLoading()
+            this.editorCtx.insertImage({
+              src: url,
+              alt: '日记插图'
             })
-            .catch(() => {
-              uni.hideLoading()
-              uni.showToast({ title: '图片上传失败', icon: 'none' })
-            })
+          } catch (err) {
+            uni.hideLoading()
+            uni.showToast({ title: '图片上传失败', icon: 'none' })
+          }
         }
       })
     },
@@ -959,8 +1033,21 @@ export default {
     chooseImage() {
       uni.chooseImage({
         count: 9 - this.diaryData.images.length,
-        success: (res) => {
-          this.diaryData.images = [...this.diaryData.images, ...res.tempFilePaths]
+        sizeType: ['compressed'],
+        sourceType: ['album', 'camera'],
+        success: async (res) => {
+          const paths = Array.isArray(res.tempFilePaths) ? res.tempFilePaths : []
+          if (!paths.length) return
+          uni.showLoading({
+            title: '处理图片中...',
+            mask: true
+          })
+          try {
+            const prepared = await this.prepareSelectedImages(paths)
+            this.diaryData.images = [...this.diaryData.images, ...prepared]
+          } finally {
+            uni.hideLoading()
+          }
         }
       })
     },
