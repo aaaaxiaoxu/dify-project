@@ -48,7 +48,7 @@
         <view class="user-card" v-for="user in userList" :key="user.id">
           <view class="card-header">
             <view class="user-avatar">
-              <text class="avatar-text">{{ (user.nickname || user.username || '?').charAt(0) }}</text>
+              <image class="user-avatar-image" :src="getAvatarUrl(user.avatar_url)" mode="aspectFill"></image>
             </view>
             <view class="user-main-info">
               <text class="user-nickname">{{ user.nickname }}</text>
@@ -163,6 +163,7 @@ export default {
       currentTab: 'users',
       keyword: '',
       loading: false,
+      defaultAvatar: '/static/images/default-avatar.svg',
       
       // 用户管理
       userList: [],
@@ -181,6 +182,10 @@ export default {
   },
   
   methods: {
+    getAvatarUrl(avatarUrl) {
+      return avatarUrl || this.defaultAvatar
+    },
+
     getToken() {
       return this.$store && this.$store.state ? this.$store.state.token : ''
     },
@@ -456,17 +461,14 @@ export default {
   width: 80rpx;
   height: 80rpx;
   border-radius: 50%;
-  background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   margin-right: 20rpx;
+  overflow: hidden;
 }
 
-.avatar-text {
-  color: #fff;
-  font-size: 36rpx;
-  font-weight: bold;
+.user-avatar-image {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .user-main-info {

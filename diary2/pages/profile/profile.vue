@@ -4,14 +4,10 @@
       <view class="avatar-section">
         <view class="avatar-box" @click="chooseAvatar">
           <image
-            v-if="userInfo.avatar_url"
             class="avatar-image"
-            :src="userInfo.avatar_url"
+            :src="getAvatarUrl(userInfo.avatar_url)"
             mode="aspectFill"
           />
-          <view v-else class="avatar-placeholder">
-            <text class="avatar-icon">👤</text>
-          </view>
           <view class="avatar-mask">
             <text class="avatar-mask-text">{{ uploadingAvatar ? '上传中' : '更换头像' }}</text>
           </view>
@@ -167,6 +163,7 @@ export default {
         avatar_url: '',
         bio: ''
       },
+      defaultAvatar: '/static/images/default-avatar.svg',
       userStats: {
         diaryCount: 0,
         cityCount: 0,
@@ -190,6 +187,10 @@ export default {
   },
   
   methods: {
+    getAvatarUrl(avatarUrl) {
+      return avatarUrl || this.defaultAvatar
+    },
+
     loadUserData() {
       const token = this.$store && this.$store.state ? this.$store.state.token : ''
       
@@ -566,8 +567,7 @@ export default {
   position: relative;
 }
 
-.avatar-image,
-.avatar-placeholder {
+.avatar-image {
   width: 120rpx;
   height: 120rpx;
   border-radius: 50%;
@@ -577,10 +577,6 @@ export default {
   justify-content: center;
   border: 3rpx solid #007AFF;
   overflow: hidden;
-}
-
-.avatar-icon {
-  font-size: 60rpx;
 }
 
 .avatar-mask {

@@ -93,6 +93,7 @@ def get_all_users():
             "username": u.username,
             "nickname": u.nickname,
             "phone": u.phone,
+            "avatar_url": u.avatar_url,
             "is_admin": u.is_admin,
             "is_frozen": u.is_frozen,
             "diary_count": diary_count,
