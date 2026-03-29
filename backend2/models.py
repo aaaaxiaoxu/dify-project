@@ -130,17 +130,6 @@ class ShareLog(db.Model):
     accessed_at = db.Column(db.DateTime, default=get_current_time, comment='访问时间')
 
 
-class TravelTrajectory(db.Model):
-    __tablename__ = 'travel_trajectories'
-    
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True, comment='轨迹ID')
-    user_id = db.Column(db.BigInteger, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, comment='用户ID')
-    location = db.Column(db.String(200), nullable=False, comment='地点')
-    latitude = db.Column(db.DECIMAL(10, 8), nullable=True, comment='纬度')
-    longitude = db.Column(db.DECIMAL(11, 8), nullable=True, comment='经度')
-    visit_time = db.Column(db.DateTime, default=get_current_time, comment='访问时间')
-    created_at = db.Column(db.DateTime, default=get_current_time, comment='创建时间')
-
 # 数据库操作类
 class Database:
     def __init__(self):
@@ -151,7 +140,6 @@ class Database:
         self.diary_images = []
         self.diary_videos = []
         self.ai_analysis = []
-        self.travel_trajectories = []
         self.init_data()
     
     def init_data(self):
@@ -207,14 +195,6 @@ class Database:
       ai_analysis1 = AIAnalysis(1, 1, "这篇日记表达了作者对西湖美景的喜爱之情，整体情绪非常积极向上。", '["西湖", "断桥残雪", "江南水乡", "诗画", "心情舒畅"]', "根据您对江南水乡的喜爱，推荐您下次可以去苏州园林或乌镇古镇体验类似的江南风情。", "2023-05-15T20:30:00Z", "2023-05-15T20:30:00Z")
       self.ai_analysis.append(ai_analysis1)
       
-      # 添加示例轨迹数据
-      trajectory1 = TravelTrajectory(1, 1, "杭州西湖", 30.24286500, 120.14944500, "2023-05-15T10:00:00Z", "2023-05-15T10:00:00Z")
-      trajectory2 = TravelTrajectory(2, 1, "丽江古城", 26.87239500, 100.23559700, "2023-04-22T14:30:00Z", "2023-04-22T14:30:00Z")
-      trajectory3 = TravelTrajectory(3, 1, "三亚亚龙湾", 18.19528500, 109.65798500, "2023-03-10T09:15:00Z", "2023-03-10T09:15:00Z")
-      self.travel_trajectories.append(trajectory1)
-      self.travel_trajectories.append(trajectory2)
-      self.travel_trajectories.append(trajectory3)
-    
     # 用户相关操作
     def get_user_by_username(self, username):
         for user in self.users:

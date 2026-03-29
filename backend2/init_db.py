@@ -1,7 +1,7 @@
 import pymysql
 from app import create_app
 from extensions import db
-from models import User, Diary, DiaryImage, DiaryVideo, AIAnalysis, TravelTrajectory
+from models import User, Diary
 
 def init_database():
     app = create_app()
