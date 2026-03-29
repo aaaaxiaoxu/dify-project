@@ -15,7 +15,7 @@ const store = createStore({
   state: {
     userInfo: null,
     token: uni.getStorageSync('token') || '', // 初始化时从本地存储获取token
-    isAdmin: uni.getStorageSync('isAdmin') || false, // 管理员状态
+    isAdmin: false, // 管理员状态始终以服务端校验为准
     diaryList: [],
     currentDiary: null,
     reportCache: createEmptyReportCache()

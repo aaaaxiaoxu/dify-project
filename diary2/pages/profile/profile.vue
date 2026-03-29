@@ -79,12 +79,6 @@
         <text class="menu-arrow">></text>
       </view>
       
-      <view class="menu-item admin-entry-item" @click="goToAdminPanel" v-if="isAdmin">
-        <text class="menu-icon">🛡️</text>
-        <text class="menu-text">管理后台</text>
-        <text class="menu-arrow">></text>
-      </view>
-      
       <view class="menu-item logout-item" @click="logout">
         <text class="menu-icon">🚪</text>
         <text class="menu-text">退出登录</text>
@@ -163,7 +157,6 @@ export default {
         cityCount: 0,
         kmCount: 0
       },
-      isAdmin: false,
       showEditPopup: false,
       savingProfile: false,
       uploadingAvatar: false,
@@ -445,16 +438,9 @@ export default {
       })
     },
 
-    goToAdminPanel() {
-      uni.navigateTo({
-        url: '/pages/admin/admin'
-      })
-    },
-    
     checkAdminStatus() {
       const token = this.$store && this.$store.state ? this.$store.state.token : ''
       if (!token) {
-        this.isAdmin = false
         this.$store.commit('SET_IS_ADMIN', false)
         return
       }
@@ -466,11 +452,9 @@ export default {
           'Authorization': 'Bearer ' + token
         }
       }).then(res => {
-        this.isAdmin = res.is_admin
         this.$store.commit('SET_IS_ADMIN', res.is_admin)
       }).catch(err => {
         console.error('检查管理员状态失败:', err)
-        this.isAdmin = false
         this.$store.commit('SET_IS_ADMIN', false)
       })
     },
@@ -710,16 +694,6 @@ export default {
 
 .logout-item .menu-text {
   color: white;
-}
-
-.admin-entry-item {
-  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
-  border: 1rpx solid #a5d6a7;
-}
-
-.admin-entry-item .menu-text {
-  color: #2e7d32;
-  font-weight: 500;
 }
 
 .popup-mask {
