@@ -2,11 +2,9 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from models import User, Diary, DiaryImage, DiaryVideo, AIAnalysis
 from extensions import db
+from utils.admin_auth import is_fixed_admin
 
 admin_bp = Blueprint('admin', __name__)
-
-# 硬编码管理员密钥
-ADMIN_SECRET_KEY = 'travel-diary-admin-2024'
 
 
 def _require_admin():
@@ -15,7 +13,7 @@ def _require_admin():
     user = User.query.get(current_user_id)
     if user is None:
         return None, (jsonify({"msg": "用户不存在"}), 404)
-    if not user.is_admin:
+    if not is_fixed_admin(user):
         return None, (jsonify({"msg": "权限不足，需要管理员身份"}), 403)
     return user, None
 
@@ -24,27 +22,8 @@ def _require_admin():
 @admin_bp.route('/upgrade', methods=['POST'])
 @jwt_required()
 def upgrade_to_admin():
-    """普通用户输入密钥升级为管理员"""
-    data = request.get_json() or {}
-    secret_key = (data.get('secret_key') or '').strip()
-
-    if not secret_key:
-        return jsonify({"msg": "请输入管理员密钥"}), 400
-
-    if secret_key != ADMIN_SECRET_KEY:
-        return jsonify({"msg": "密钥错误"}), 403
-
-    current_user_id = int(get_jwt_identity())
-    user = User.query.get(current_user_id)
-    if user is None:
-        return jsonify({"msg": "用户不存在"}), 404
-
-    if user.is_admin:
-        return jsonify({"msg": "您已经是管理员"}), 200
-
-    user.is_admin = True
-    db.session.commit()
-    return jsonify({"msg": "升级成功，您已成为管理员"}), 200
+    """管理员权限仅保留给固定账号，不支持通过密钥升级"""
+    return jsonify({"msg": "管理员权限仅限固定账号，不支持升级"}), 403
 
 
 # ──────────────────────────────── 检查管理员状态 ────────────────────────────────
@@ -56,7 +35,7 @@ def check_admin():
     user = User.query.get(current_user_id)
     if user is None:
         return jsonify({"msg": "用户不存在"}), 404
-    return jsonify({"is_admin": user.is_admin}), 200
+    return jsonify({"is_admin": is_fixed_admin(user)}), 200
 
 
 # ──────────────────────────────── 用户管理 ────────────────────────────────
@@ -94,7 +73,7 @@ def get_all_users():
             "nickname": u.nickname,
             "phone": u.phone,
             "avatar_url": u.avatar_url,
-            "is_admin": u.is_admin,
+            "is_admin": is_fixed_admin(u),
             "is_frozen": u.is_frozen,
             "diary_count": diary_count,
             "created_at": u.created_at.strftime('%Y-%m-%d %H:%M:%S') if u.created_at else None,
@@ -120,6 +99,9 @@ def freeze_user(user_id):
     target_user = User.query.get(user_id)
     if target_user is None:
         return jsonify({"msg": "目标用户不存在"}), 404
+
+    if is_fixed_admin(target_user):
+        return jsonify({"msg": "不能冻结管理员"}), 400
 
     if target_user.id == admin.id:
         return jsonify({"msg": "不能冻结自己"}), 400

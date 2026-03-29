@@ -3,6 +3,7 @@ from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_requir
 from sqlalchemy import or_
 from models import User
 from extensions import db
+from utils.admin_auth import is_fixed_admin
 
 user_bp = Blueprint('user', __name__)
 
@@ -15,7 +16,7 @@ def serialize_user(user):
         "phone": user.phone,
         "avatar_url": user.avatar_url,
         "bio": user.bio,
-        "is_admin": user.is_admin,
+        "is_admin": is_fixed_admin(user),
     }
 
 @user_bp.route('/register', methods=['POST'])
@@ -78,15 +79,7 @@ def login():
     
     return jsonify({
         "access_token": access_token,
-        "user": {
-            "id": user.id,
-            "username": user.username,
-            "nickname": user.nickname,
-            "phone": user.phone,
-            "avatar_url": user.avatar_url,
-            "bio": user.bio,
-            "is_admin": user.is_admin
-        }
+        "user": serialize_user(user)
     }), 200
 
 

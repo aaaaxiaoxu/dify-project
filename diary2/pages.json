@@ -154,12 +154,6 @@
         "text": "我的",
         "iconPath": "static/tabbar/mine.png",
         "selectedIconPath": "static/tabbar/mine-active.png"
-      },
-      {
-        "pagePath": "pages/admin/admin",
-        "text": "管理",
-        "iconPath": "static/tabbar/admin.png",
-        "selectedIconPath": "static/tabbar/admin-active.png"
       }
     ]
   }

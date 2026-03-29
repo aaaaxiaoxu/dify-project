@@ -53,7 +53,6 @@ export default {
   REPORT_DOWNLOAD: BASE_URL + '/report/download/',
   
   // 管理员相关接口
-  ADMIN_UPGRADE: BASE_URL + '/admin/upgrade',
   ADMIN_CHECK: BASE_URL + '/admin/check',
   ADMIN_USERS: BASE_URL + '/admin/users',
   ADMIN_DIARIES: BASE_URL + '/admin/diaries',

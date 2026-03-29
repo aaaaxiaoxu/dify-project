@@ -1,15 +1,10 @@
 <template>
   <view class="container">
-    <!-- 非管理员提示 -->
-    <view class="no-admin" v-if="!isAdmin">
-      <text class="no-admin-icon">🔒</text>
-      <text class="no-admin-title">暂无管理员权限</text>
-      <text class="no-admin-desc">请前往「我的」页面升级成为管理员</text>
-      <button class="go-profile-btn" @click="goToProfile">前往个人中心</button>
+    <view class="loading-tip" v-if="authChecking">
+      <text>校验权限中...</text>
     </view>
-    
-    <!-- 管理员面板 -->
-    <view class="admin-panel" v-if="isAdmin">
+
+    <view class="admin-panel" v-else-if="isAdmin">
       <!-- 顶部 Tab 切换 -->
       <view class="tab-bar">
         <view 
@@ -159,6 +154,7 @@ import config from '../../api/config.js'
 export default {
   data() {
     return {
+      authChecking: true,
       isAdmin: false,
       currentTab: 'users',
       keyword: '',
@@ -194,23 +190,49 @@ export default {
       const token = this.getToken()
       if (!token) {
         this.isAdmin = false
+        this.authChecking = false
+        this.$store.commit('SET_IS_ADMIN', false)
+        uni.redirectTo({
+          url: '/pages/login/login'
+        })
         return
       }
+
+      this.authChecking = true
       
       request({
         url: config.ADMIN_CHECK,
         method: 'GET',
         header: { 'Authorization': 'Bearer ' + token }
       }).then(res => {
-        this.isAdmin = res.is_admin
-        this.$store.commit('SET_IS_ADMIN', res.is_admin)
-        if (this.isAdmin) {
-          this.loadData()
+        const isAdmin = !!(res && res.is_admin)
+        this.isAdmin = isAdmin
+        this.authChecking = false
+        this.$store.commit('SET_IS_ADMIN', isAdmin)
+        if (!isAdmin) {
+          this.redirectNoPermission()
+          return
         }
+        this.loadData()
       }).catch(err => {
         console.error('检查管理员状态失败:', err)
         this.isAdmin = false
+        this.authChecking = false
+        this.$store.commit('SET_IS_ADMIN', false)
+        this.redirectNoPermission()
       })
+    },
+
+    redirectNoPermission() {
+      uni.showToast({
+        title: '无权限访问',
+        icon: 'none'
+      })
+      setTimeout(() => {
+        uni.switchTab({
+          url: '/pages/profile/profile'
+        })
+      }, 300)
     },
     
     switchTab(tab) {
@@ -336,12 +358,6 @@ export default {
     changeDiaryPage(page) {
       this.diaryCurrentPage = page
       this.loadDiaries()
-    },
-    
-    goToProfile() {
-      uni.switchTab({
-        url: '/pages/profile/profile'
-      })
     }
   }
 }
@@ -352,42 +368,6 @@ export default {
   padding: 20rpx;
   background: linear-gradient(135deg, #f5f7fa 0%, #e4edf9 100%);
   min-height: 100vh;
-}
-
-/* 非管理员提示 */
-.no-admin {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 120rpx 60rpx;
-}
-
-.no-admin-icon {
-  font-size: 100rpx;
-  margin-bottom: 30rpx;
-}
-
-.no-admin-title {
-  font-size: 36rpx;
-  font-weight: bold;
-  color: #333;
-  margin-bottom: 20rpx;
-}
-
-.no-admin-desc {
-  font-size: 28rpx;
-  color: #999;
-  margin-bottom: 40rpx;
-}
-
-.go-profile-btn {
-  padding: 20rpx 60rpx;
-  background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
-  color: white;
-  border: none;
-  border-radius: 40rpx;
-  font-size: 30rpx;
 }
 
 /* Tab 栏 */

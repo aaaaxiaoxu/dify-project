@@ -79,16 +79,10 @@
         <text class="menu-arrow">></text>
       </view>
       
-      <view class="menu-item admin-upgrade-item" @click="showAdminUpgrade" v-if="!isAdmin">
+      <view class="menu-item admin-entry-item" @click="goToAdminPanel" v-if="isAdmin">
         <text class="menu-icon">🛡️</text>
-        <text class="menu-text">升级成为管理员</text>
+        <text class="menu-text">管理后台</text>
         <text class="menu-arrow">></text>
-      </view>
-      
-      <view class="menu-item admin-badge-item" v-if="isAdmin">
-        <text class="menu-icon">🛡️</text>
-        <text class="menu-text">管理员身份已激活</text>
-        <text class="admin-badge">✓</text>
       </view>
       
       <view class="menu-item logout-item" @click="logout">
@@ -450,10 +444,20 @@ export default {
         url: '/pages/profile/disclaimer'
       })
     },
+
+    goToAdminPanel() {
+      uni.navigateTo({
+        url: '/pages/admin/admin'
+      })
+    },
     
     checkAdminStatus() {
       const token = this.$store && this.$store.state ? this.$store.state.token : ''
-      if (!token) return
+      if (!token) {
+        this.isAdmin = false
+        this.$store.commit('SET_IS_ADMIN', false)
+        return
+      }
       
       request({
         url: config.ADMIN_CHECK,
@@ -466,44 +470,8 @@ export default {
         this.$store.commit('SET_IS_ADMIN', res.is_admin)
       }).catch(err => {
         console.error('检查管理员状态失败:', err)
-      })
-    },
-    
-    showAdminUpgrade() {
-      uni.showModal({
-        title: '升级成为管理员',
-        content: '',
-        editable: true,
-        placeholderText: '请输入管理员密钥',
-        success: (res) => {
-          if (res.confirm && res.content) {
-            this.doAdminUpgrade(res.content.trim())
-          }
-        }
-      })
-    },
-    
-    doAdminUpgrade(secretKey) {
-      const token = this.$store && this.$store.state ? this.$store.state.token : ''
-      if (!token) {
-        uni.showToast({ title: '请先登录', icon: 'none' })
-        return
-      }
-      
-      request({
-        url: config.ADMIN_UPGRADE,
-        method: 'POST',
-        header: {
-          'Authorization': 'Bearer ' + token
-        },
-        data: { secret_key: secretKey }
-      }).then(res => {
-        uni.showToast({ title: res.msg || '升级成功', icon: 'success' })
-        this.isAdmin = true
-        this.$store.commit('SET_IS_ADMIN', true)
-      }).catch(err => {
-        const msg = (err.data && err.data.msg) ? err.data.msg : '密钥错误'
-        uni.showToast({ title: msg, icon: 'none' })
+        this.isAdmin = false
+        this.$store.commit('SET_IS_ADMIN', false)
       })
     },
     
@@ -744,30 +712,14 @@ export default {
   color: white;
 }
 
-.admin-upgrade-item {
-  background: linear-gradient(135deg, #f5f0ff 0%, #ede7ff 100%);
-  border: 1rpx solid #d4c5f9;
-}
-
-.admin-upgrade-item .menu-text {
-  color: #6a11cb;
-  font-weight: 500;
-}
-
-.admin-badge-item {
+.admin-entry-item {
   background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
   border: 1rpx solid #a5d6a7;
 }
 
-.admin-badge-item .menu-text {
+.admin-entry-item .menu-text {
   color: #2e7d32;
   font-weight: 500;
-}
-
-.admin-badge {
-  color: #2e7d32;
-  font-size: 32rpx;
-  font-weight: bold;
 }
 
 .popup-mask {
