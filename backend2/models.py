@@ -100,6 +100,102 @@ class AIAnalysis(db.Model):
     created_at = db.Column(db.DateTime, default=get_current_time, comment='创建时间')
     updated_at = db.Column(db.DateTime, default=get_current_time, onupdate=get_current_time, comment='更新时间')
 
+
+class WorkflowJob(db.Model):
+    __tablename__ = 'workflow_jobs'
+
+    STATUS_QUEUED = 'queued'
+    STATUS_RUNNING = 'running'
+    STATUS_SUCCEEDED = 'succeeded'
+    STATUS_FAILED = 'failed'
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True, comment='任务ID')
+    user_id = db.Column(db.BigInteger, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True, comment='用户ID')
+    job_type = db.Column(db.String(50), nullable=False, default='report', server_default='report', index=True, comment='任务类型')
+    workflow_name = db.Column(db.String(100), nullable=False, comment='工作流名称')
+    status = db.Column(db.String(20), nullable=False, default=STATUS_QUEUED, server_default=STATUS_QUEUED, index=True, comment='任务状态')
+    request_payload = db.Column(db.JSON, nullable=True, comment='请求载荷')
+    response_payload = db.Column(db.JSON, nullable=True, comment='响应载荷')
+    error_message = db.Column(db.Text, nullable=True, comment='错误信息')
+    retry_count = db.Column(db.Integer, nullable=False, default=0, server_default='0', comment='已重试次数')
+    max_retries = db.Column(db.Integer, nullable=False, default=2, server_default='2', comment='最大重试次数')
+    timeout_seconds = db.Column(db.Integer, nullable=False, default=90, server_default='90', comment='超时时间秒')
+    run_after = db.Column(db.DateTime, nullable=True, comment='下次可运行时间')
+    started_at = db.Column(db.DateTime, nullable=True, comment='开始时间')
+    finished_at = db.Column(db.DateTime, nullable=True, comment='结束时间')
+    created_at = db.Column(db.DateTime, default=get_current_time, comment='创建时间')
+    updated_at = db.Column(db.DateTime, default=get_current_time, onupdate=get_current_time, comment='更新时间')
+
+    user = db.relationship('User', backref=db.backref('workflow_jobs', lazy='dynamic'))
+
+
+class ReportJob(db.Model):
+    __tablename__ = 'report_jobs'
+
+    STATUS_QUEUED = 'queued'
+    STATUS_RUNNING = 'running'
+    STATUS_SUCCEEDED = 'succeeded'
+    STATUS_FAILED = 'failed'
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True, comment='报告任务ID')
+    user_id = db.Column(db.BigInteger, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True, comment='用户ID')
+    workflow_job_id = db.Column(db.BigInteger, db.ForeignKey('workflow_jobs.id', ondelete='SET NULL'), nullable=True, unique=True, comment='关联工作流任务ID')
+    status = db.Column(db.String(20), nullable=False, default=STATUS_QUEUED, server_default=STATUS_QUEUED, index=True, comment='报告任务状态')
+    range_type = db.Column(db.String(20), nullable=False, comment='时间范围类型')
+    start_date = db.Column(db.Date, nullable=False, comment='开始日期')
+    end_date = db.Column(db.Date, nullable=False, comment='结束日期')
+    report_style = db.Column(db.String(50), nullable=False, default='warm', server_default='warm', comment='报告风格')
+    source = db.Column(db.String(20), nullable=True, comment='生成来源')
+    report_context = db.Column(db.JSON, nullable=True, comment='报告上下文')
+    report_payload = db.Column(db.JSON, nullable=True, comment='报告结果')
+    error_message = db.Column(db.Text, nullable=True, comment='错误信息')
+    created_at = db.Column(db.DateTime, default=get_current_time, comment='创建时间')
+    updated_at = db.Column(db.DateTime, default=get_current_time, onupdate=get_current_time, comment='更新时间')
+    started_at = db.Column(db.DateTime, nullable=True, comment='开始时间')
+    finished_at = db.Column(db.DateTime, nullable=True, comment='结束时间')
+
+    user = db.relationship('User', backref=db.backref('report_jobs', lazy='dynamic'))
+    workflow_job = db.relationship('WorkflowJob', backref=db.backref('report_job', uselist=False))
+
+
+class SentimentEvalSample(db.Model):
+    __tablename__ = 'sentiment_eval_samples'
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True, comment='样本ID')
+    sample_key = db.Column(db.String(50), nullable=False, unique=True, comment='样本编号')
+    text = db.Column(db.Text, nullable=False, comment='人工标注文本')
+    expected_label = db.Column(db.String(20), nullable=False, index=True, comment='人工标注情感标签')
+    annotation = db.Column(db.String(255), nullable=True, comment='标注说明')
+    source = db.Column(db.String(100), nullable=False, default='manual', server_default='manual', comment='样本来源')
+    created_at = db.Column(db.DateTime, default=get_current_time, comment='创建时间')
+    updated_at = db.Column(db.DateTime, default=get_current_time, onupdate=get_current_time, comment='更新时间')
+
+
+class ImageAccessLog(db.Model):
+    __tablename__ = 'image_access_logs'
+
+    DECISION_ALLOWED = 'allowed'
+    DECISION_DENIED = 'denied'
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True, comment='访问日志ID')
+    user_id = db.Column(db.BigInteger, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True, comment='访问用户ID')
+    diary_id = db.Column(db.BigInteger, db.ForeignKey('diaries.id', ondelete='SET NULL'), nullable=True, index=True, comment='日记ID')
+    image_id = db.Column(db.BigInteger, db.ForeignKey('diary_images.id', ondelete='SET NULL'), nullable=True, index=True, comment='图片ID')
+    share_link_id = db.Column(db.BigInteger, db.ForeignKey('share_links.id', ondelete='SET NULL'), nullable=True, index=True, comment='分享链接ID')
+    image_url = db.Column(db.String(1000), nullable=False, comment='图片URL')
+    access_type = db.Column(db.String(50), nullable=False, comment='访问类型')
+    decision = db.Column(db.String(20), nullable=False, index=True, comment='授权结果')
+    reason = db.Column(db.String(255), nullable=True, comment='授权原因')
+    ip_address = db.Column(db.String(45), nullable=True, comment='访问IP')
+    user_agent = db.Column(db.String(500), nullable=True, comment='浏览器UA')
+    created_at = db.Column(db.DateTime, default=get_current_time, comment='创建时间')
+
+    user = db.relationship('User', backref=db.backref('image_access_logs', lazy='dynamic'))
+    diary = db.relationship('Diary', backref=db.backref('image_access_logs', lazy='dynamic'))
+    image = db.relationship('DiaryImage', backref=db.backref('access_logs', lazy='dynamic'))
+    share_link = db.relationship('ShareLink', backref=db.backref('image_access_logs', lazy='dynamic'))
+
+
 class ShareLink(db.Model):
     __tablename__ = 'share_links'
 
