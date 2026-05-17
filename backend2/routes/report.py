@@ -5,6 +5,7 @@ import threading
 import time
 import uuid
 from collections import Counter, OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 
 from flask import Blueprint, current_app, jsonify, request, send_file
@@ -24,10 +25,50 @@ from utils.report_pdf import build_travel_report_pdf
 
 report_bp = Blueprint('report', __name__)
 logger = logging.getLogger(__name__)
+_REPORT_EXECUTOR = None
+_REPORT_EXECUTOR_LOCK = threading.Lock()
 
 
 def _now():
     return datetime.now()
+
+
+def _config_int(name, default, min_value=1):
+    try:
+        value = int(current_app.config.get(name, default))
+    except (TypeError, ValueError):
+        value = default
+    return max(min_value, value)
+
+
+def _report_max_concurrent_jobs():
+    return _config_int('REPORT_MAX_CONCURRENT_REPORT_JOBS', 2)
+
+
+def _report_max_pending_jobs_per_user():
+    return _config_int('REPORT_MAX_PENDING_REPORT_JOBS_PER_USER', 3)
+
+
+def _pending_report_job_count(user_id):
+    return (
+        ReportJob.query
+        .filter(
+            ReportJob.user_id == user_id,
+            ReportJob.status.in_([ReportJob.STATUS_QUEUED, ReportJob.STATUS_RUNNING]),
+        )
+        .count()
+    )
+
+
+def _get_report_executor():
+    global _REPORT_EXECUTOR
+    with _REPORT_EXECUTOR_LOCK:
+        if _REPORT_EXECUTOR is None:
+            _REPORT_EXECUTOR = ThreadPoolExecutor(
+                max_workers=_report_max_concurrent_jobs(),
+                thread_name_prefix='report-worker',
+            )
+        return _REPORT_EXECUTOR
 
 
 def _parse_date_value(raw_value, field_name):
@@ -826,9 +867,7 @@ def _process_report_job(app, report_job_id):
 
 def _start_report_job(report_job_id):
     app = current_app._get_current_object()
-    thread = threading.Thread(target=_process_report_job, args=(app, report_job_id))
-    thread.daemon = True
-    thread.start()
+    _get_report_executor().submit(_process_report_job, app, report_job_id)
 
 
 def _normalize_export_bundle(payload):
@@ -907,6 +946,14 @@ def generate_report():
 
     if not start_date or not end_date:
         return jsonify({'msg': '当前还没有可生成总结的旅行日记'}), 404
+
+    pending_limit = _report_max_pending_jobs_per_user()
+    if _pending_report_job_count(current_user_id) >= pending_limit:
+        return jsonify(
+            {
+                'msg': f'报告任务过多，请等待当前任务完成后再试（最多同时保留 {pending_limit} 个待处理任务）'
+            }
+        ), 429
 
     rows = _query_report_rows(current_user_id, start_date, end_date)
 

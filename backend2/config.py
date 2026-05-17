@@ -2,6 +2,15 @@ import os
 import pytz
 from datetime import datetime, timedelta
 
+
+def _env_int(name, default, min_value=1):
+    try:
+        value = int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        value = default
+    return max(min_value, value)
+
+
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'travel-diary-secret-key'
     UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER') or 'uploads'
@@ -33,6 +42,8 @@ class Config:
     DIFY_WRITING_API_URL = os.environ.get('DIFY_WRITING_API_URL') or DIFY_API_URL
     DIFY_REPORT_API_KEY = os.environ.get('DIFY_REPORT_API_KEY') or DIFY_API_KEY
     DIFY_REPORT_API_URL = os.environ.get('DIFY_REPORT_API_URL') or DIFY_API_URL
+    REPORT_MAX_CONCURRENT_REPORT_JOBS = _env_int('REPORT_MAX_CONCURRENT_REPORT_JOBS', 2)
+    REPORT_MAX_PENDING_REPORT_JOBS_PER_USER = _env_int('REPORT_MAX_PENDING_REPORT_JOBS_PER_USER', 3)
 
     # 腾讯地图 WebService Key（用于经纬度反查地址）
     TENCENT_MAP_KEY = os.environ.get('TENCENT_MAP_KEY') or 'HTJBZ-PMGKN-2E5FT-SH6DO-ZEQYV-BSBWH'
