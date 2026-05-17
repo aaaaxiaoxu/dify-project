@@ -4,20 +4,13 @@ import jieba
 import jieba.analyse
 import re
 import json
-from collections import Counter
 from sqlalchemy.exc import IntegrityError
 from extensions import dify_client, db
 from models import Diary, AIAnalysis
 from utils.html_sanitize import html_to_plain_text
+from utils.sentiment import analyze_emotion_rules
 
 ai_bp = Blueprint('ai', __name__)
-
-# 定义情感词典
-emotion_lexicon = {
-    "positive": ["开心", "快乐", "高兴", "愉快", "兴奋", "欢乐", "喜悦", "满足", "幸福", "愉悦", "激动", "惊喜", "欣慰", "畅快", "舒畅"],
-    "negative": ["难过", "悲伤", "忧郁", "沮丧", "失望", "痛苦", "烦恼", "焦虑", "担忧", "愤怒", "生气", "郁闷", "烦躁"],
-    "neutral": ["平静", "安宁", "放松", "悠闲", "舒适", "恬静", "淡然", "冷静"]
-}
 
 # 定义地点类型词典
 location_types = {
@@ -68,45 +61,8 @@ def analyze_emotion(content):
     """
     分析情感倾向
     """
-    # 分词
-    words = jieba.lcut(content.lower())
-    
-    # 统计各类情感词出现次数
-    emotion_counts = {"positive": 0, "negative": 0, "neutral": 0}
-    
-    for word in words:
-        for emotion_type, emotion_words in emotion_lexicon.items():
-            if word in emotion_words:
-                emotion_counts[emotion_type] += 1
-    
-    # 判断主要情感倾向
-    total_emotions = sum(emotion_counts.values())
-    
-    if total_emotions == 0:
-        return "中性", "这篇日记的情感表达较为含蓄，可以进一步描述当时的心情和感受。", 0.0
-    
-    # 计算情感比例
-    positive_ratio = emotion_counts["positive"] / total_emotions
-    negative_ratio = emotion_counts["negative"] / total_emotions
-    neutral_ratio = emotion_counts["neutral"] / total_emotions
-    emotion_score = round(max(-1.0, min(1.0, positive_ratio - negative_ratio)), 1)
-    
-    # 确定主要情感
-    if positive_ratio >= 0.5:
-        main_emotion = "积极"
-        description = "这篇日记表达了作者积极向上的情感，整体氛围愉快轻松。"
-    elif negative_ratio >= 0.5:
-        main_emotion = "消极"
-        description = "这篇日记表达了作者略带感伤的情感，可以适当调节心情。"
-    elif neutral_ratio >= 0.5:
-        main_emotion = "平和"
-        description = "这篇日记表达了作者平和宁静的情感，整体氛围安详舒适。"
-    else:
-        # 混合情感
-        main_emotion = "复杂"
-        description = "这篇日记表达了作者复杂多变的情感，生活体验丰富多彩。"
-    
-    return main_emotion, description, emotion_score
+    result = analyze_emotion_rules(content)
+    return result["emotion_label"], result["emotion_analysis"], result["emotion_score"]
 
 def identify_location_type(content):
     """
