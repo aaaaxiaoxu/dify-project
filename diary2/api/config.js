@@ -49,6 +49,7 @@ export default {
 
   // 智能旅行总结
   REPORT_GENERATE: BASE_URL + '/report/generate',
+  REPORT_JOB: BASE_URL + '/report/jobs/',
   REPORT_EXPORT_PDF: BASE_URL + '/report/export-pdf',
   REPORT_DOWNLOAD: BASE_URL + '/report/download/',
   

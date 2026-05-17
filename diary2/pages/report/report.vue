@@ -38,6 +38,7 @@
         {{ loading ? '生成中...' : '生成旅行报告' }}
       </button>
       <text class="panel-tip">报告会优先复用已有日记分析结果，未配置报告工作流时会自动回退到本地总结。</text>
+      <text v-if="jobStatusText" class="job-status">{{ jobStatusText }}</text>
     </view>
 
     <view v-if="reportData" class="report-stack">
@@ -165,6 +166,10 @@ export default {
       endDate: '',
       reportData: null,
       errorMessage: '',
+      currentJobId: null,
+      pollTimer: null,
+      pollAttempts: 0,
+      jobStatusText: '',
       rangeOptions: [
         { label: '近7天', value: '7d' },
         { label: '近30天', value: '30d' },
@@ -219,6 +224,10 @@ export default {
 
   onLoad() {
     this.restoreCachedReport()
+  },
+
+  onUnload() {
+    this.clearReportPoll()
   },
 
   methods: {
@@ -318,7 +327,11 @@ export default {
 
       this.loading = true
       this.errorMessage = ''
-      uni.showLoading({ title: '生成中', mask: true })
+      this.currentJobId = null
+      this.pollAttempts = 0
+      this.jobStatusText = '正在创建报告任务...'
+      this.clearReportPoll()
+      uni.showLoading({ title: '任务创建中', mask: true })
 
       request({
         url: config.REPORT_GENERATE,
@@ -329,25 +342,104 @@ export default {
         },
       })
         .then((res) => {
-          this.reportData = res
-          this.errorMessage = ''
-          this.$store.commit('SET_REPORT_CACHE', {
-            reportData: res,
-            rangeType: this.rangeType,
-            startDate: this.startDate,
-            endDate: this.endDate,
-          })
+          if (!res || !res.job_id) {
+            throw new Error('未返回报告任务ID')
+          }
+          this.currentJobId = res.job_id
+          this.jobStatusText = '报告任务已创建，正在后台生成...'
+          uni.hideLoading()
+          uni.showLoading({ title: '后台生成中', mask: true })
+          this.pollReportJob(res.job_id)
         })
         .catch((err) => {
-          const msg = (err.data && err.data.msg) ? err.data.msg : '生成报告失败'
+          const msg =
+            (err.data && err.data.msg) ||
+            err.message ||
+            '生成报告失败'
           this.reportData = null
           this.errorMessage = msg
-          uni.showToast({ title: msg, icon: 'none' })
-        })
-        .finally(() => {
+          this.jobStatusText = ''
           this.loading = false
+          this.currentJobId = null
+          uni.showToast({ title: msg, icon: 'none' })
           uni.hideLoading()
         })
+    },
+
+    pollReportJob(jobId) {
+      if (!jobId || !this.loading) return
+      this.pollAttempts += 1
+
+      request({
+        url: config.REPORT_JOB + encodeURIComponent(jobId),
+        method: 'GET',
+        header: {
+          Authorization: 'Bearer ' + this.token,
+        },
+      })
+        .then((job) => {
+          if (job.status === 'succeeded' && job.result) {
+            this.applyReportResult(job.result)
+            return
+          }
+          if (job.status === 'failed') {
+            const msg = job.error_message || '报告任务执行失败'
+            this.failReportJob(msg)
+            return
+          }
+          if (this.pollAttempts >= 90) {
+            this.failReportJob('报告生成超时，请稍后重试')
+            return
+          }
+
+          this.jobStatusText = job.status === 'running'
+            ? '报告正在生成，请稍候...'
+            : '报告任务排队中，请稍候...'
+          this.pollTimer = setTimeout(() => {
+            this.pollReportJob(jobId)
+          }, 2000)
+        })
+        .catch((err) => {
+          const msg =
+            (err.data && err.data.msg) ||
+            err.message ||
+            '查询报告任务失败'
+          this.failReportJob(msg)
+        })
+    },
+
+    applyReportResult(result) {
+      this.reportData = result
+      this.errorMessage = ''
+      this.jobStatusText = ''
+      this.loading = false
+      this.currentJobId = null
+      this.clearReportPoll()
+      this.$store.commit('SET_REPORT_CACHE', {
+        reportData: result,
+        rangeType: this.rangeType,
+        startDate: this.startDate,
+        endDate: this.endDate,
+      })
+      uni.hideLoading()
+    },
+
+    failReportJob(message) {
+      this.reportData = null
+      this.errorMessage = message
+      this.jobStatusText = ''
+      this.loading = false
+      this.currentJobId = null
+      this.clearReportPoll()
+      uni.hideLoading()
+      uni.showToast({ title: message, icon: 'none' })
+    },
+
+    clearReportPoll() {
+      if (this.pollTimer) {
+        clearTimeout(this.pollTimer)
+        this.pollTimer = null
+      }
     },
 
     exportPdf() {
@@ -563,6 +655,14 @@ export default {
   font-size: 22rpx;
   line-height: 1.7;
   color: #64748b;
+}
+
+.job-status {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: #0f6bff;
 }
 
 .report-stack {
