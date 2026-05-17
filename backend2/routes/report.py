@@ -1,5 +1,8 @@
 import json
+import logging
 import os
+import threading
+import time
 import uuid
 from collections import Counter, OrderedDict
 from datetime import date, datetime, timedelta
@@ -14,11 +17,16 @@ from geo_utils import (
     unique_location_strings,
     unique_travel_day_count,
 )
-from models import AIAnalysis, Diary
+from models import AIAnalysis, Diary, ReportJob, WorkflowJob
 from utils.html_sanitize import html_to_plain_text
 from utils.report_pdf import build_travel_report_pdf
 
 report_bp = Blueprint('report', __name__)
+logger = logging.getLogger(__name__)
+
+
+def _now():
+    return datetime.now()
 
 
 def _parse_date_value(raw_value, field_name):
@@ -607,6 +615,219 @@ def _merge_report_payload(payload, context):
     return merged
 
 
+def _build_report_response(report_context, report_payload, start_date, end_date, range_type, report_style, source):
+    return {
+        'period': {
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
+            'range_type': range_type,
+        },
+        'source': source,
+        'report_style': report_style,
+        'summary_stats': report_context['summary_stats'],
+        'report_images': report_context['report_images'],
+        'report': report_payload,
+    }
+
+
+def _is_non_retryable_dify_error(error_message):
+    text = str(error_message or '')
+    return '未配置' in text or 'api key' in text.lower()
+
+
+def _call_report_workflow_with_retries(
+    report_context,
+    start_date,
+    end_date,
+    report_style,
+    max_retries=2,
+    sleep_fn=time.sleep,
+):
+    last_error = None
+    attempts = 0
+    for attempt_index in range(max(0, max_retries) + 1):
+        attempts = attempt_index + 1
+        generated, error = dify_client.generate_travel_report_with_error(
+            report_context,
+            start_date.isoformat(),
+            end_date.isoformat(),
+            report_style=report_style,
+        )
+        if generated:
+            return {
+                'generated': generated,
+                'source': 'dify',
+                'error_message': None,
+                'attempts': attempts,
+                'workflow_status': WorkflowJob.STATUS_SUCCEEDED,
+            }
+
+        last_error = error or 'Dify 报告工作流未返回有效结果'
+        if _is_non_retryable_dify_error(last_error):
+            break
+        if attempt_index < max_retries:
+            sleep_fn(min(2, attempt_index + 1))
+
+    return {
+        'generated': None,
+        'source': 'local',
+        'error_message': last_error,
+        'attempts': attempts,
+        'workflow_status': WorkflowJob.STATUS_FAILED,
+    }
+
+
+def _query_report_rows(current_user_id, start_date, end_date):
+    return (
+        db.session.query(Diary, AIAnalysis)
+        .outerjoin(AIAnalysis, AIAnalysis.diary_id == Diary.id)
+        .filter(
+            Diary.user_id == current_user_id,
+            Diary.is_draft == False,
+            Diary.date >= start_date,
+            Diary.date <= end_date,
+        )
+        .order_by(Diary.date.asc(), Diary.id.asc())
+        .all()
+    )
+
+
+def _create_report_job(current_user_id, payload, start_date, end_date, range_type, rows):
+    report_context = _build_report_context(rows, start_date, end_date)
+    report_style = (payload.get('report_style') or 'warm').strip() or 'warm'
+    max_retries = payload.get('max_retries', 2)
+    try:
+        max_retries = max(0, min(5, int(max_retries)))
+    except (TypeError, ValueError):
+        max_retries = 2
+
+    workflow_job = WorkflowJob(
+        user_id=current_user_id,
+        job_type='report',
+        workflow_name='travel_report',
+        status=WorkflowJob.STATUS_QUEUED,
+        request_payload={
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
+            'range_type': range_type,
+            'report_style': report_style,
+        },
+        max_retries=max_retries,
+        timeout_seconds=90,
+    )
+    db.session.add(workflow_job)
+    db.session.flush()
+
+    report_job = ReportJob(
+        user_id=current_user_id,
+        workflow_job_id=workflow_job.id,
+        status=ReportJob.STATUS_QUEUED,
+        range_type=range_type,
+        start_date=start_date,
+        end_date=end_date,
+        report_style=report_style,
+        report_context=report_context,
+    )
+    db.session.add(report_job)
+    db.session.commit()
+    return report_job
+
+
+def _serialize_report_job(report_job):
+    payload = {
+        'job_id': report_job.id,
+        'workflow_job_id': report_job.workflow_job_id,
+        'status': report_job.status,
+        'source': report_job.source,
+        'error_message': report_job.error_message,
+        'created_at': report_job.created_at.isoformat() if report_job.created_at else None,
+        'started_at': report_job.started_at.isoformat() if report_job.started_at else None,
+        'finished_at': report_job.finished_at.isoformat() if report_job.finished_at else None,
+    }
+    if report_job.report_payload:
+        payload['result'] = report_job.report_payload
+    return payload
+
+
+def _process_report_job(app, report_job_id):
+    with app.app_context():
+        report_job = ReportJob.query.get(report_job_id)
+        if not report_job:
+            return
+
+        workflow_job = report_job.workflow_job
+        now = _now()
+        report_job.status = ReportJob.STATUS_RUNNING
+        report_job.started_at = now
+        if workflow_job:
+            workflow_job.status = WorkflowJob.STATUS_RUNNING
+            workflow_job.started_at = now
+        db.session.commit()
+
+        try:
+            report_context = report_job.report_context or {}
+            start_date = report_job.start_date
+            end_date = report_job.end_date
+            retry_result = _call_report_workflow_with_retries(
+                report_context,
+                start_date,
+                end_date,
+                report_job.report_style,
+                max_retries=workflow_job.max_retries if workflow_job else 2,
+            )
+            generated = retry_result['generated']
+            source = retry_result['source']
+            report_payload = _merge_report_payload(generated, report_context)
+            response_payload = _build_report_response(
+                report_context,
+                report_payload,
+                start_date,
+                end_date,
+                report_job.range_type,
+                report_job.report_style,
+                source,
+            )
+
+            finished_at = _now()
+            report_job.status = ReportJob.STATUS_SUCCEEDED
+            report_job.source = source
+            report_job.report_payload = response_payload
+            report_job.error_message = retry_result['error_message']
+            report_job.finished_at = finished_at
+
+            if workflow_job:
+                workflow_job.status = retry_result['workflow_status']
+                workflow_job.retry_count = max(0, retry_result['attempts'] - 1)
+                workflow_job.response_payload = generated
+                workflow_job.error_message = retry_result['error_message']
+                workflow_job.finished_at = finished_at
+
+            db.session.commit()
+        except Exception as exc:
+            logger.exception("报告任务执行失败: report_job_id=%s", report_job_id)
+            db.session.rollback()
+            report_job = ReportJob.query.get(report_job_id)
+            if not report_job:
+                return
+            workflow_job = report_job.workflow_job
+            finished_at = _now()
+            report_job.status = ReportJob.STATUS_FAILED
+            report_job.error_message = f'{type(exc).__name__}: {exc}'
+            report_job.finished_at = finished_at
+            if workflow_job:
+                workflow_job.status = WorkflowJob.STATUS_FAILED
+                workflow_job.error_message = report_job.error_message
+                workflow_job.finished_at = finished_at
+            db.session.commit()
+
+
+def _start_report_job(report_job_id):
+    app = current_app._get_current_object()
+    thread = threading.Thread(target=_process_report_job, args=(app, report_job_id))
+    thread.daemon = True
+    thread.start()
+
+
 def _normalize_export_bundle(payload):
     period = payload.get('period') if isinstance(payload.get('period'), dict) else {}
     summary_stats = payload.get('summary_stats') if isinstance(payload.get('summary_stats'), dict) else {}
@@ -662,48 +883,31 @@ def generate_report():
     if not start_date or not end_date:
         return jsonify({'msg': '当前还没有可生成总结的旅行日记'}), 404
 
-    rows = (
-        db.session.query(Diary, AIAnalysis)
-        .outerjoin(AIAnalysis, AIAnalysis.diary_id == Diary.id)
-        .filter(
-            Diary.user_id == current_user_id,
-            Diary.is_draft == False,
-            Diary.date >= start_date,
-            Diary.date <= end_date,
-        )
-        .order_by(Diary.date.asc(), Diary.id.asc())
-        .all()
-    )
+    rows = _query_report_rows(current_user_id, start_date, end_date)
 
     if not rows:
         return jsonify({'msg': '该时间范围内暂无可生成报告的日记'}), 404
 
-    report_context = _build_report_context(rows, start_date, end_date)
-    report_style = (payload.get('report_style') or 'warm').strip() or 'warm'
-
-    generated = dify_client.generate_travel_report(
-        report_context,
-        start_date.isoformat(),
-        end_date.isoformat(),
-        report_style=report_style,
-    )
-    source = 'dify' if generated else 'local'
-    report_payload = _merge_report_payload(generated, report_context)
+    report_job = _create_report_job(current_user_id, payload, start_date, end_date, range_type, rows)
+    _start_report_job(report_job.id)
 
     return jsonify(
         {
-            'period': {
-                'start_date': start_date.isoformat(),
-                'end_date': end_date.isoformat(),
-                'range_type': range_type,
-            },
-            'source': source,
-            'report_style': report_style,
-            'summary_stats': report_context['summary_stats'],
-            'report_images': report_context['report_images'],
-            'report': report_payload,
+            'job_id': report_job.id,
+            'status': report_job.status,
+            'msg': '报告任务已创建',
         }
-    ), 200
+    ), 202
+
+
+@report_bp.route('/jobs/<int:job_id>', methods=['GET'])
+@jwt_required()
+def get_report_job(job_id):
+    current_user_id = int(get_jwt_identity())
+    report_job = ReportJob.query.filter_by(id=job_id, user_id=current_user_id).first()
+    if report_job is None:
+        return jsonify({'msg': '报告任务不存在或无权访问'}), 404
+    return jsonify(_serialize_report_job(report_job)), 200
 
 
 @report_bp.route('/export-pdf', methods=['POST'])

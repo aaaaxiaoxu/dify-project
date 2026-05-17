@@ -277,6 +277,15 @@ class DifyClient:
         return suggestion_text or None
 
     def generate_travel_report(self, report_context, start_date, end_date, report_style='warm'):
+        generated, _error = self.generate_travel_report_with_error(
+            report_context,
+            start_date,
+            end_date,
+            report_style=report_style,
+        )
+        return generated
+
+    def generate_travel_report_with_error(self, report_context, start_date, end_date, report_style='warm'):
         """
         使用 Dify 工作流生成旅行报告。
         :param report_context: 后端聚合后的 dict
@@ -286,7 +295,7 @@ class DifyClient:
         """
         if not self._has_valid_workflow_config(self.report_api_key, self.report_api_url):
             logger.warning("Dify 报告工作流未配置，跳过")
-            return None
+            return None, "Dify 报告工作流未配置"
 
         inputs = {
             'report_context_json': json.dumps(report_context, ensure_ascii=False),
@@ -304,11 +313,11 @@ class DifyClient:
         )
         if resp is None:
             logger.error("Dify 报告工作流失败: %s", error)
-            return None
+            return None, error or "Dify 报告工作流请求失败"
 
         outputs = self._extract_outputs(resp)
         if not outputs:
-            return None
+            return None, "Dify 报告工作流未返回有效 outputs"
 
         report_raw = (
             outputs.get('report_result') or
@@ -317,7 +326,7 @@ class DifyClient:
         )
         parsed = self._parse_json_output(report_raw)
         if parsed is not None:
-            return parsed
+            return parsed, None
 
         direct_fields = {
             "report_title": outputs.get("report_title", ""),
@@ -330,7 +339,7 @@ class DifyClient:
             "memory_quote": outputs.get("memory_quote", ""),
         }
         if any(direct_fields.values()):
-            return direct_fields
+            return direct_fields, None
 
         logger.warning("Dify 报告工作流返回无法识别: %s", outputs)
-        return None
+        return None, "Dify 报告工作流返回无法识别"
