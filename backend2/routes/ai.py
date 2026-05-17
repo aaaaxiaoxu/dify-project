@@ -8,6 +8,7 @@ import json
 import logging
 import threading
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm.exc import StaleDataError
 from extensions import dify_client, db
 from models import Diary, AIAnalysis
 from utils.html_sanitize import html_to_plain_text
@@ -464,9 +465,18 @@ def _run_dify_analysis_job(app, diary_id, user_id):
             if not dify_result:
                 return
 
+            db.session.expire_all()
+            diary = Diary.query.filter_by(id=diary_id, user_id=user_id).first()
+            if not diary:
+                return
+
+            diary_content = diary.content or ''
             local_result = analyze_diary_content(diary_content)
             analysis_result = _merge_analysis_payload(local_result, dify_result)
             _save_ai_analysis_record(diary.id, analysis_result)
+    except StaleDataError:
+        db.session.rollback()
+        logger.info("Dify 日记分析后台任务跳过，源数据已变化: diary_id=%s", diary_id)
     except Exception:
         logger.exception("Dify 日记分析后台任务失败: diary_id=%s", diary_id)
     finally:
