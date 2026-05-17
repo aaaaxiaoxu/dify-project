@@ -1,9 +1,12 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from concurrent.futures import ThreadPoolExecutor
 import jieba
 import jieba.analyse
 import re
 import json
+import logging
+import threading
 from sqlalchemy.exc import IntegrityError
 from extensions import dify_client, db
 from models import Diary, AIAnalysis
@@ -11,6 +14,38 @@ from utils.html_sanitize import html_to_plain_text
 from utils.sentiment import analyze_emotion_rules
 
 ai_bp = Blueprint('ai', __name__)
+logger = logging.getLogger(__name__)
+_AI_EXECUTOR = None
+_AI_EXECUTOR_LOCK = threading.Lock()
+_AI_PENDING_DIARY_IDS = set()
+_AI_PENDING_LOCK = threading.Lock()
+
+
+def _config_int(name, default, min_value=1):
+    try:
+        value = int(current_app.config.get(name, default))
+    except (TypeError, ValueError):
+        value = default
+    return max(min_value, value)
+
+
+def _ai_max_concurrent_jobs():
+    return _config_int('AI_MAX_CONCURRENT_WORKFLOW_JOBS', 2)
+
+
+def _get_ai_executor():
+    global _AI_EXECUTOR
+    with _AI_EXECUTOR_LOCK:
+        if _AI_EXECUTOR is None:
+            _AI_EXECUTOR = ThreadPoolExecutor(
+                max_workers=_ai_max_concurrent_jobs(),
+                thread_name_prefix='ai-workflow-worker',
+            )
+        return _AI_EXECUTOR
+
+
+def _dify_analysis_configured():
+    return dify_client._has_valid_workflow_config(dify_client.api_key, dify_client.api_url)
 
 # 定义地点类型词典
 location_types = {
@@ -259,7 +294,7 @@ def _build_local_writing_feedback(content):
     }
 
 
-def _merge_writing_feedback(result_payload, content):
+def _merge_writing_feedback(result_payload, content, use_dify=False):
     payload = dict(result_payload or {})
     local_feedback = _build_local_writing_feedback(content)
 
@@ -268,13 +303,57 @@ def _merge_writing_feedback(result_payload, content):
     if not payload.get("writing_suggestion"):
         payload["writing_suggestion"] = local_feedback["writing_suggestion"]
 
-    plain = html_to_plain_text(content or "")
-    writing_text = plain if plain.strip() else (content or "")
-    dify_writing = dify_client.generate_writing_suggestion(writing_text)
-    if dify_writing:
-        payload["writing_suggestion"] = dify_writing
+    if use_dify:
+        plain = html_to_plain_text(content or "")
+        writing_text = plain if plain.strip() else (content or "")
+        dify_writing = dify_client.generate_writing_suggestion(writing_text)
+        if dify_writing:
+            payload["writing_suggestion"] = dify_writing
 
     return payload
+
+
+def _has_payload_value(value):
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, tuple, set, dict)):
+        return bool(value)
+    return True
+
+
+def _merge_analysis_payload(local_payload, dify_payload):
+    merged = dict(local_payload or {})
+    if not isinstance(dify_payload, dict):
+        return merged
+
+    for field in [
+        "emotion_label",
+        "emotion_analysis",
+        "travel_advice",
+        "memory_point",
+        "writing_style",
+        "writing_suggestion",
+    ]:
+        value = dify_payload.get(field)
+        if _has_payload_value(value):
+            merged[field] = value
+
+    keywords = dify_payload.get("keywords")
+    if isinstance(keywords, list) and keywords:
+        merged["keywords"] = keywords
+
+    if dify_payload.get("emotion_score") is not None:
+        try:
+            merged["emotion_score"] = round(
+                max(-1.0, min(1.0, float(dify_payload.get("emotion_score")))),
+                2,
+            )
+        except (TypeError, ValueError):
+            pass
+
+    return merged
 
 
 def _serialize_keywords_for_storage(keywords_value):
@@ -361,6 +440,59 @@ def _save_ai_analysis_record(diary_id, analysis_result):
         db.session.commit()
         return record
 
+
+def _run_dify_analysis_job(app, diary_id, user_id):
+    try:
+        with app.app_context():
+            diary = Diary.query.filter_by(id=diary_id, user_id=user_id).first()
+            if not diary:
+                return
+
+            diary_content = diary.content or ''
+            plain_for_llm = html_to_plain_text(diary_content)
+            content_for_llm = plain_for_llm if plain_for_llm.strip() else diary_content
+            if not content_for_llm.strip():
+                return
+
+            image_urls = [img.image_url for img in diary.images] if diary.images else []
+            video_urls = [vid.video_url for vid in diary.videos] if diary.videos else []
+            dify_result = dify_client.analyze_diary_content(
+                content_for_llm,
+                image_urls=image_urls,
+                video_urls=video_urls,
+            )
+            if not dify_result:
+                return
+
+            local_result = analyze_diary_content(diary_content)
+            analysis_result = _merge_analysis_payload(local_result, dify_result)
+            _save_ai_analysis_record(diary.id, analysis_result)
+    except Exception:
+        logger.exception("Dify 日记分析后台任务失败: diary_id=%s", diary_id)
+    finally:
+        with _AI_PENDING_LOCK:
+            _AI_PENDING_DIARY_IDS.discard(diary_id)
+
+
+def _schedule_dify_analysis_job(diary_id, user_id):
+    if not _dify_analysis_configured():
+        return False
+
+    with _AI_PENDING_LOCK:
+        if diary_id in _AI_PENDING_DIARY_IDS:
+            return False
+        _AI_PENDING_DIARY_IDS.add(diary_id)
+
+    app = current_app._get_current_object()
+    try:
+        _get_ai_executor().submit(_run_dify_analysis_job, app, diary_id, user_id)
+        return True
+    except Exception:
+        with _AI_PENDING_LOCK:
+            _AI_PENDING_DIARY_IDS.discard(diary_id)
+        logger.exception("提交 Dify 日记分析后台任务失败: diary_id=%s", diary_id)
+        return False
+
 @ai_bp.route('/analysis', methods=['POST'])
 @jwt_required()
 def ai_analysis():
@@ -395,29 +527,15 @@ def ai_analysis():
         existing_payload = _serialize_ai_analysis_record(existing)
         return jsonify(_merge_writing_feedback(existing_payload, writing_source)), 200
 
-    # ---- 2. 获取文字、图片、视频 ----
-
-    # 收集图片和视频 URL
-    image_urls = [img.image_url for img in diary.images] if diary.images else []
-    video_urls = [vid.video_url for vid in diary.videos] if diary.videos else []
-
-    # ---- 3. 调用 Dify 分析（传文字 + 图片 + 视频） ----
-    dify_result = dify_client.analyze_diary_content(
-        plain_for_llm if plain_for_llm.strip() else diary_content,
-        image_urls=image_urls,
-        video_urls=video_urls
-    )
-
-    if dify_result:
-        analysis_result = dify_result
-    else:
-        # Dify 不可用时回退到本地分析
-        analysis_result = analyze_diary_content(diary_content)
-
+    # ---- 2. 接口线程只做本地分析，Dify 多模态分析交给后台任务增强 ----
+    analysis_result = analyze_diary_content(diary_content)
     analysis_result = _merge_writing_feedback(analysis_result, writing_source)
 
-    # ---- 4. 存库 ----
+    # ---- 3. 先保存本地结果，避免用户请求被 Dify 慢响应阻塞 ----
     _save_ai_analysis_record(diary_id, analysis_result)
+    analysis_result["dify_status"] = (
+        "queued" if _schedule_dify_analysis_job(diary.id, user_id) else "skipped"
+    )
 
     return jsonify(analysis_result), 200
 
@@ -441,23 +559,14 @@ def ai_analysis_refresh():
     diary_content = diary.content or ''
     plain_for_llm = html_to_plain_text(diary_content)
     writing_source = plain_for_llm if plain_for_llm.strip() else diary_content
-    image_urls = [img.image_url for img in diary.images] if diary.images else []
-    video_urls = [vid.video_url for vid in diary.videos] if diary.videos else []
 
-    dify_result = dify_client.analyze_diary_content(
-        plain_for_llm if plain_for_llm.strip() else diary_content,
-        image_urls=image_urls,
-        video_urls=video_urls
-    )
-
-    if dify_result:
-        analysis_result = dify_result
-    else:
-        analysis_result = analyze_diary_content(diary_content)
-
+    analysis_result = analyze_diary_content(diary_content)
     analysis_result = _merge_writing_feedback(analysis_result, writing_source)
 
-    # 存入新记录
+    # 先写入本地刷新结果，再异步触发 Dify 增强。
     _save_ai_analysis_record(diary_id, analysis_result)
+    analysis_result["dify_status"] = (
+        "queued" if _schedule_dify_analysis_job(diary.id, user_id) else "skipped"
+    )
 
     return jsonify(analysis_result), 200

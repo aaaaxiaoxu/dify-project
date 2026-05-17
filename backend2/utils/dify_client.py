@@ -2,6 +2,7 @@ import re
 import json
 import requests
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,27 @@ class DifyClient:
             str(api_key).strip() != 'your-dify-api-key'
         )
 
-    def _run_workflow(self, api_key, api_url, inputs, timeout=60, user='travel_diary_user'):
+    def _post_workflow_with_retries(self, url, headers, data, timeout=60, max_retries=2, retry_delay=1):
+        last_error = None
+        for attempt_index in range(max(0, max_retries) + 1):
+            try:
+                resp = requests.post(url, headers=headers, json=data, timeout=timeout)
+                if resp.status_code == 200:
+                    return resp, None
+
+                err_body = resp.text
+                last_error = f"HTTP {resp.status_code}: {err_body}"
+                logger.warning("Dify API 返回 %s: %s", resp.status_code, err_body)
+            except Exception as e:
+                last_error = f"{type(e).__name__}: {e}"
+                logger.warning("Dify API 请求异常: %s", last_error)
+
+            if attempt_index < max_retries:
+                time.sleep(min(2, retry_delay * (attempt_index + 1)))
+
+        return None, last_error or "Dify API 请求失败"
+
+    def _run_workflow(self, api_key, api_url, inputs, timeout=60, user='travel_diary_user', max_retries=2):
         if not self._has_valid_workflow_config(api_key, api_url):
             return None, 'Dify 工作流未配置'
 
@@ -47,19 +68,15 @@ class DifyClient:
             'user': user
         }
 
-        try:
-            resp = requests.post(url, headers=headers, json=data, timeout=timeout)
-            if resp.status_code == 200:
-                return resp, None
-            err_body = resp.text
-            logger.warning("Dify API 返回 %s: %s", resp.status_code, err_body)
-            return None, f"HTTP {resp.status_code}: {err_body}"
-        except Exception as e:
-            last_error = f"{type(e).__name__}: {e}"
-            logger.warning("Dify API 请求异常: %s", last_error)
-            return None, last_error
+        return self._post_workflow_with_retries(
+            url,
+            headers,
+            data,
+            timeout=timeout,
+            max_retries=max_retries,
+        )
 
-    def _call_workflow(self, url, headers, content, image_urls=None, video_urls=None, timeout=60):
+    def _call_workflow(self, url, headers, content, image_urls=None, video_urls=None, timeout=60, max_retries=2):
         """
         调用 Dify 工作流，返回 (response, error_msg)。
         输入变量名与 Dify 工作流"开始"节点保持一致
@@ -92,17 +109,13 @@ class DifyClient:
             'response_mode': 'blocking',
             'user': 'travel_diary_user'
         }
-        try:
-            resp = requests.post(url, headers=headers, json=data, timeout=timeout)
-            if resp.status_code == 200:
-                return resp, None
-            err_body = resp.text
-            logger.warning("Dify API 返回 %s: %s", resp.status_code, err_body)
-            return None, f"HTTP {resp.status_code}: {err_body}"
-        except Exception as e:
-            last_error = f"{type(e).__name__}: {e}"
-            logger.warning("Dify API 请求异常: %s", last_error)
-            return None, last_error
+        return self._post_workflow_with_retries(
+            url,
+            headers,
+            data,
+            timeout=timeout,
+            max_retries=max_retries,
+        )
 
     def _extract_outputs(self, resp):
         try:

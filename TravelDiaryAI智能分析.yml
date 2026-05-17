@@ -1,0 +1,841 @@
+app:
+  description: ''
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  mode: workflow
+  name: TravelDiaryAI智能分析
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/tongyi:0.1.31@638e473191f93192f670875b06edf0bcb89a3433aa736be89ed1749073b8a168
+    version: null
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: livien/ffmpeg_tools_dify:1.0.1@29bcacc47dd0bdcee791807374ce774235eef887a3d9e665baaeaa372664def4
+    version: null
+kind: app
+version: 0.5.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        image_file_size_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: start
+        targetType: if-else
+      id: 1772779016498-source-1772811200001-target
+      source: '1772779016498'
+      sourceHandle: source
+      target: '1772811200001'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: llm
+        targetType: end
+      id: 1772799343457-source-1772799509124-target
+      selected: false
+      source: '1772799343457'
+      sourceHandle: source
+      target: '1772799509124'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: if-else
+        targetType: if-else
+      id: 1772811200001-false-1772800266178-target
+      source: '1772811200001'
+      sourceHandle: 'false'
+      target: '1772800266178'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: if-else
+        targetType: tool
+      id: 1772800266178-true-1772798621967-target
+      source: '1772800266178'
+      sourceHandle: 'true'
+      target: '1772798621967'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: if-else
+        targetType: tool
+      id: 1772811200001-true-1772798621967-target
+      source: '1772811200001'
+      sourceHandle: 'true'
+      target: '1772798621967'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: tool
+        targetType: llm
+      id: 1772798621967-source-1772785540695-target
+      source: '1772798621967'
+      sourceHandle: source
+      target: '1772785540695'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: if-else
+        targetType: llm
+      id: 1772800311925-true-1772779393525-target
+      source: '1772800311925'
+      sourceHandle: 'true'
+      target: '1772779393525'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: if-else
+        targetType: if-else
+      id: 1772811200001-false-1772800311925-target
+      source: '1772811200001'
+      sourceHandle: 'false'
+      target: '1772800311925'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: llm
+        targetType: variable-aggregator
+      id: 1772785540695-source-1772809222501-target
+      source: '1772785540695'
+      sourceHandle: source
+      target: '1772809222501'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: variable-aggregator
+        targetType: llm
+      id: 1772809222501-source-1772799343457-target
+      source: '1772809222501'
+      sourceHandle: source
+      target: '1772799343457'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: template-transform
+        targetType: variable-aggregator
+      id: 1772809252982-source-1772809222501-target
+      source: '1772809252982'
+      sourceHandle: source
+      target: '1772809222501'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: if-else
+        targetType: template-transform
+      id: 1772800266178-false-1772809252982-target
+      selected: false
+      source: '1772800266178'
+      sourceHandle: 'false'
+      target: '1772809252982'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: llm
+        targetType: variable-aggregator
+      id: 1772779393525-source-1772810009387-target
+      source: '1772779393525'
+      sourceHandle: source
+      target: '1772809222501'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: if-else
+        targetType: template-transform
+      id: 1772800311925-false-1772810039961-target
+      source: '1772800311925'
+      sourceHandle: 'false'
+      target: '1772810039961'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: template-transform
+        targetType: variable-aggregator
+      id: 1772810039961-source-1772810009387-target
+      source: '1772810039961'
+      sourceHandle: source
+      target: '1772809222501'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: llm
+        targetType: llm
+      id: 1772785540695-source-1772779393525-target
+      source: '1772785540695'
+      sourceHandle: source
+      target: '1772779393525'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        selected: false
+        title: 用户输入
+        type: start
+        variables:
+        - default: ''
+          hint: ''
+          label: 日记正文
+          max_length: 5000
+          options: []
+          placeholder: ''
+          required: false
+          type: paragraph
+          variable: text
+        - allowed_file_extensions: []
+          allowed_file_types:
+          - image
+          allowed_file_upload_methods:
+          - local_file
+          - remote_url
+          default: []
+          hide: false
+          hint: ''
+          label: 图片URL列表
+          max_length: 5
+          options: []
+          placeholder: ''
+          required: false
+          type: file-list
+          variable: image_urls
+        - allowed_file_extensions: []
+          allowed_file_types:
+          - video
+          allowed_file_upload_methods:
+          - local_file
+          - remote_url
+          default: []
+          hint: ''
+          label: 视频文件
+          max_length: 1
+          options: []
+          placeholder: ''
+          required: false
+          type: file-list
+          variable: video_file
+        - default: ''
+          hint: ''
+          label: 日记ID
+          max_length: 48
+          options: []
+          placeholder: ''
+          required: false
+          type: number
+          variable: diary_id
+        - default: ''
+          hint: ''
+          label: 用户ID
+          max_length: 48
+          options: []
+          placeholder: ''
+          required: false
+          type: number
+          variable: user_id
+      height: 213
+      id: '1772779016498'
+      position:
+        x: 0
+        y: 0
+      positionAbsolute:
+        x: 0
+        y: 0
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        cases:
+        - case_id: 'true'
+          conditions:
+          - comparison_operator: contains
+            id: 2d084f2f-2d5f-4cc0-bb76-cba06c99aa01
+            sub_variable_condition:
+              case_id: 4471904b-a455-4789-a51a-f97d59b3b102
+              conditions:
+              - comparison_operator: '>'
+                id: 39b2b8a9-4ab5-432f-b394-1d80ffd8c701
+                key: size
+                value: '0'
+                varType: number
+              logical_operator: and
+            value: ''
+            varType: array[file]
+            variable_selector:
+            - '1772779016498'
+            - video_file
+          - comparison_operator: contains
+            id: 9fed0ad3-5ac2-4f78-b97d-8ae840ad1d02
+            sub_variable_condition:
+              case_id: 8ff0d18c-2ea3-46c2-9f78-12ff4e73d103
+              conditions:
+              - comparison_operator: '>'
+                id: 3fe4ec5d-6162-4f2a-8fb9-fce4b329a104
+                key: size
+                value: '0'
+                varType: number
+              logical_operator: and
+            value: ''
+            varType: array[file]
+            variable_selector:
+            - '1772779016498'
+            - image_urls
+          id: 'true'
+          logical_operator: and
+        selected: false
+        title: 图视频同时存在
+        type: if-else
+      height: 172
+      id: '1772811200001'
+      position:
+        x: 180
+        y: 98
+      positionAbsolute:
+        x: 180
+        y: 98
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        default_value:
+        - key: text
+          type: string
+          value: 空
+        error_strategy: default-value
+        model:
+          completion_params:
+            temperature: 0.4
+          mode: chat
+          name: qwen3-vl-plus
+          provider: langgenius/tongyi/tongyi
+        prompt_config:
+          jinja2_variables: []
+        prompt_template:
+        - edition_type: basic
+          id: 944215d2-b350-40f5-ba17-90c824f50146
+          jinja2_text: "你是一个专业的旅行摄影师。请分析用户上传的多张图片，按顺序描述每个场景。\r\n要求：\r\n1. 按图片顺序描述（第一张、第二张...）\r\
+            \n2. 每张描述不超过50字\r\n3. 如果没有图片，输出\"未提供图片\"\r\n\r\n图片列表：\r\n{% for url in\
+            \ image_urls %}\r\n- {{ url }}\r\n{% endfor %}\r\n\r\n请输出格式：\r\n{\r\n\
+            \  \"image_descriptions\": [\r\n    \"第一张描述\",\r\n    \"第二张描述\"\r\n  ]\r\
+            \n}"
+          role: system
+          text: "你是一个专业的旅行摄影师。请分析用户上传的多张图片，按顺序描述每个场景。\n要求：\n1. 按图片顺序描述（第一张、第二张...）\n\
+            2. 每张描述不超过50字\n3. 如果没有图片，输出\"未提供图片\"\n\n\n请输出格式：\n{\n  \"image_descriptions\"\
+            : [\n    \"第一张描述\",\n    \"第二张描述\"\n  ]\n}"
+        retry_config:
+          max_retries: 3
+          retry_enabled: false
+          retry_interval: 1000
+        selected: false
+        structured_output:
+          schema:
+            additionalProperties: false
+            properties:
+              image_descriptions:
+                items:
+                  type: string
+                type: array
+            required:
+            - image_descriptions
+            type: object
+        structured_output_enabled: true
+        title: 图片内容识别
+        type: llm
+        vision:
+          configs:
+            detail: high
+            variable_selector:
+            - '1772779016498'
+            - image_urls
+          enabled: true
+      height: 124
+      id: '1772779393525'
+      position:
+        x: 724
+        y: 217
+      positionAbsolute:
+        x: 724
+        y: 217
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        default_value:
+        - key: text
+          type: string
+          value: 空
+        error_strategy: default-value
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: qwen3-vl-plus
+          provider: langgenius/tongyi/tongyi
+        prompt_template:
+        - id: 00654aba-db1b-4873-8c6c-49e011a02967
+          role: system
+          text: "你是一个旅行视频分析专家\n\n请将关键帧列表转换为数组，然后描述每个关键帧的场景。\n\n例如：\n- 第一张关键帧：描述\n\
+            - 第二张关键帧：描述\n请分析关键帧图片。\n\n请输出格式：\n{\n  \"video_analysis\": \"综合描述\"\n\
+            }\n"
+        retry_config:
+          max_retries: 3
+          retry_enabled: false
+          retry_interval: 1000
+        selected: false
+        structured_output_enabled: true
+        title: 视频内容识别
+        type: llm
+        vision:
+          configs:
+            detail: high
+            variable_selector:
+            - '1772798621967'
+            - files
+          enabled: true
+      height: 124
+      id: '1772785540695'
+      position:
+        x: 1086
+        y: 21
+      positionAbsolute:
+        x: 1086
+        y: 21
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        is_team_authorization: true
+        paramSchemas:
+        - auto_generate: null
+          default: null
+          form: llm
+          human_description:
+            en_US: Target file, need video file
+            ja_JP: Target file, need video file
+            pt_BR: Arquivo de vídeo, precisa enviar o arquivo de vídeo
+            zh_Hans: 目标文件，需要视频文件
+          label:
+            en_US: Video file
+            ja_JP: Video file
+            pt_BR: Arquivo de vídeo
+            zh_Hans: 视频文件
+          llm_description: Target file, need video file
+          max: null
+          min: null
+          name: video
+          options: []
+          placeholder: null
+          precision: null
+          required: true
+          scope: null
+          template: null
+          type: file
+        - auto_generate: null
+          default: null
+          form: llm
+          human_description:
+            en_US: Gap time, default is 1 second
+            ja_JP: Gap time, default is 1 second
+            pt_BR: Intervalo de tempo, padrão é 1 segundo
+            zh_Hans: 间隔时间，默认是1秒
+          label:
+            en_US: Gap time
+            ja_JP: Gap time
+            pt_BR: Intervalo de tempo
+            zh_Hans: 间隔时间
+          llm_description: Gap time, default is 1 second
+          max: null
+          min: null
+          name: gap_time
+          options: []
+          placeholder: null
+          precision: null
+          required: false
+          scope: null
+          template: null
+          type: number
+        - auto_generate: null
+          default: null
+          form: llm
+          human_description:
+            en_US: Count, default is 1
+            ja_JP: Count, default is 1
+            pt_BR: Contagem, padrão é 1
+            zh_Hans: 数量，默认是1
+          label:
+            en_US: Count
+            ja_JP: Count
+            pt_BR: Contagem
+            zh_Hans: 数量
+          llm_description: Count, default is 1
+          max: null
+          min: null
+          name: count
+          options: []
+          placeholder: null
+          precision: null
+          required: false
+          scope: null
+          template: null
+          type: number
+        params:
+          count: 1
+          gap_time: ''
+          video: ''
+        plugin_id: livien/ffmpeg_tools_dify
+        plugin_unique_identifier: livien/ffmpeg_tools_dify:1.0.1@29bcacc47dd0bdcee791807374ce774235eef887a3d9e665baaeaa372664def4
+        provider_icon: /console/api/workspaces/current/plugin/icon?tenant_id=fd3950c6-5998-487c-a8cb-cc4ba8d41749&filename=e1a0f287dee56e22dc138a5c898715527c2489fae165416c7e0f5db9d69d3672.svg
+        provider_id: livien/ffmpeg_tools_dify/ffmpeg_tools_dify
+        provider_name: livien/ffmpeg_tools_dify/ffmpeg_tools_dify
+        provider_type: builtin
+        selected: true
+        title: get_video_frame_list
+        tool_configurations: {}
+        tool_description: 获取视频文件的关键帧列表
+        tool_label: get_video_frame_list
+        tool_name: get_video_frame_list
+        tool_node_version: '2'
+        tool_parameters:
+          count:
+            type: constant
+            value: 1
+          gap_time:
+            type: constant
+            value: 5
+          video:
+            type: variable
+            value:
+            - '1772779016498'
+            - video_file
+        type: tool
+      height: 52
+      id: '1772798621967'
+      position:
+        x: 744
+        y: 57
+      positionAbsolute:
+        x: 744
+        y: 57
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: qwen3.5-plus-2026-02-15
+          provider: langgenius/tongyi/tongyi
+        prompt_template:
+        - id: 2d597bd2-c264-466e-aa76-9f89f4190054
+          role: system
+          text: "你是一个智能旅行日记分析助手。请基于用户提供的文本、图片分析结果、视频分析结果，生成一份综合旅行情感分析。\n\n规则：\n\
+            1. 文本、图片、视频三类输入中，只要有任意一种存在，就必须完成分析。\n2. 如果某一项内容是空字符串、未填写，或写着“未提供图片”“未提供视频”，则忽略该项。\n\
+            3. 如果有多种输入，就综合所有有效输入一起分析。\n4. 如果只有图片或只有视频，也要根据画面内容推断情绪、场景关键词和旅行建议。\n\
+            5. 严格输出 JSON，不要输出 Markdown 代码块，不要添加解释文字。\n6. emotion_score 必须是 -1.0 到 1.0 之间的一位小数；积极为正，消极为负，中性接近 0。\n\
+            \n输入信息：\n日记正文：\n{{#1772779016498.text#}}\n\n图片分析：\n{{#1772809222501.image_result#}}\n\
+            \n视频分析：\n{{#1772809222501.video_result#}}\n\n输出格式：\n{\n  \"emotion_score\"\
+            : 0.0,\n  \"emotion_label\": \"开心\",\n  \"emotion_analysis\": \"结合有效输入给出的综合情绪分析\"\
+            ,\n  \"keywords\": [\"关键词1\", \"关键词2\", \"关键词3\"],\n  \"travel_advice\"\
+            : \"旅行建议\",\n  \"memory_point\": \"最值得记住的旅行瞬间\"\n}"
+        selected: false
+        structured_output_enabled: true
+        title: 综合内容
+        type: llm
+        vision:
+          enabled: false
+      height: 88
+      id: '1772799343457'
+      position:
+        x: 1811.683888806524
+        y: 366
+      positionAbsolute:
+        x: 1811.683888806524
+        y: 366
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        outputs:
+        - value_selector:
+          - '1772799343457'
+          - text
+          value_type: string
+          variable: analysis_result
+        selected: false
+        title: 输出
+        type: end
+      height: 88
+      id: '1772799509124'
+      position:
+        x: 2152
+        y: 366
+      positionAbsolute:
+        x: 2152
+        y: 366
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        cases:
+        - case_id: 'true'
+          conditions:
+          - comparison_operator: contains
+            id: 03671730-1954-4004-a74b-656acb7108f6
+            sub_variable_condition:
+              case_id: 6690ed85-0440-461b-a1d6-5ec50ec5af16
+              conditions:
+              - comparison_operator: '>'
+                id: 0d4e547a-948c-4750-abf1-0d630b53ad04
+                key: size
+                value: '0'
+                varType: number
+              logical_operator: and
+            value: ''
+            varType: array[file]
+            variable_selector:
+            - '1772779016498'
+            - video_file
+          id: 'true'
+          logical_operator: and
+        selected: false
+        title: 条件分支
+        type: if-else
+      height: 148
+      id: '1772800266178'
+      position:
+        x: 382
+        y: 7.316111193476047
+      positionAbsolute:
+        x: 382
+        y: 7.316111193476047
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        cases:
+        - case_id: 'true'
+          conditions:
+          - comparison_operator: contains
+            id: 0f962d0e-2815-4700-8947-a91cdbd97fb4
+            sub_variable_condition:
+              case_id: 1342a7ec-2051-49ce-967a-4b6600e0d8d1
+              conditions:
+              - comparison_operator: '>'
+                id: 72a6d534-b50f-4b9e-8786-ff839ce3e134
+                key: size
+                value: '0'
+                varType: number
+              logical_operator: and
+            value: ''
+            varType: array[file]
+            variable_selector:
+            - '1772779016498'
+            - image_urls
+          id: 'true'
+          logical_operator: and
+        selected: false
+        title: 条件分支 2
+        type: if-else
+      height: 148
+      id: '1772800311925'
+      position:
+        x: 363.42807067789147
+        y: 211.5719293221086
+      positionAbsolute:
+        x: 363.42807067789147
+        y: 211.5719293221086
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        advanced_settings:
+          group_enabled: true
+          groups:
+          - groupId: b69c12ea-cb33-468f-b362-56f680399b93
+            group_name: video_result
+            output_type: string
+            variables:
+            - - '1772809252982'
+              - output
+            - - '1772785540695'
+              - text
+          - groupId: b8d66464-7f8b-49d8-aa06-a4556cd6db46
+            group_name: image_result
+            output_type: string
+            variables:
+            - - '1772810039961'
+              - output
+            - - '1772779393525'
+              - text
+        output_type: string
+        selected: false
+        title: 多模态结果聚合
+        type: variable-aggregator
+        variables:
+        - - '1772785540695'
+          - text
+        - - '1772779393525'
+          - text
+      height: 134
+      id: '1772809222501'
+      position:
+        x: 1622.2246227027538
+        y: 57
+      positionAbsolute:
+        x: 1622.2246227027538
+        y: 57
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        selected: false
+        template: 未提供视频
+        title: 视频缺省值
+        type: template-transform
+        variables: []
+      height: 52
+      id: '1772809252982'
+      position:
+        x: 1086
+        y: 225
+      positionAbsolute:
+        x: 1086
+        y: 225
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        selected: false
+        template: 未提供图片
+        title: 图片缺省值
+        type: template-transform
+        variables: []
+      height: 52
+      id: '1772810039961'
+      position:
+        x: 724
+        y: 419.316111193476
+      positionAbsolute:
+        x: 724
+        y: 419.316111193476
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    viewport:
+      x: -254.01537296739355
+      y: 165.33658002902013
+      zoom: 0.7229323810552581
+  rag_pipeline_variables: []
