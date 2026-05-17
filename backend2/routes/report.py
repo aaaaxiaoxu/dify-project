@@ -19,6 +19,7 @@ from geo_utils import (
 )
 from models import AIAnalysis, Diary, ReportJob, WorkflowJob
 from utils.html_sanitize import html_to_plain_text
+from utils.image_access import get_authorized_cos_url
 from utils.report_pdf import build_travel_report_pdf
 
 report_bp = Blueprint('report', __name__)
@@ -288,6 +289,7 @@ def _select_report_images(rows):
                 continue
             selected.append(
                 {
+                    'image_id': image.id,
                     'image_url': image_url,
                     'diary_id': diary.id,
                     'diary_title': (diary.title or '').strip() or '未命名日记',
@@ -575,6 +577,7 @@ def _normalize_report_images(value):
         images.append(
             {
                 'image_url': image_url,
+                'image_id': image_meta.get('image_id'),
                 'diary_id': image_meta.get('diary_id'),
                 'diary_title': str(image_meta.get('diary_title') or '').strip(),
                 'diary_date': str(image_meta.get('diary_date') or '').strip(),
@@ -869,6 +872,28 @@ def _normalize_export_bundle(payload):
     }
 
 
+def _authorize_export_bundle_images(export_bundle, current_user_id):
+    authorized_images = []
+    for item in export_bundle.get('report_images') or []:
+        authorized_url, reason = get_authorized_cos_url(
+            user_id=current_user_id,
+            diary_id=item.get('diary_id'),
+            image_id=item.get('image_id'),
+            image_url=item.get('image_url'),
+            access_type='report_pdf',
+            request_obj=request,
+        )
+        if not authorized_url:
+            raise PermissionError(reason)
+
+        authorized_item = dict(item)
+        authorized_item['image_url'] = authorized_url
+        authorized_images.append(authorized_item)
+
+    export_bundle['report_images'] = authorized_images
+    return export_bundle
+
+
 @report_bp.route('/generate', methods=['POST'])
 @jwt_required()
 def generate_report():
@@ -921,6 +946,11 @@ def export_report_pdf():
         return jsonify({'msg': '缺少报告时间范围，无法导出 PDF'}), 400
     if not export_bundle['report']['report_title'] or not export_bundle['report']['summary']:
         return jsonify({'msg': '缺少完整报告内容，无法导出 PDF'}), 400
+
+    try:
+        export_bundle = _authorize_export_bundle_images(export_bundle, current_user_id)
+    except PermissionError as exc:
+        return jsonify({'msg': f'图片无权访问: {exc}'}), 403
 
     upload_root = current_app.config.get('UPLOAD_FOLDER') or 'uploads'
     export_dir = os.path.join(current_app.root_path, upload_root, 'report_exports')

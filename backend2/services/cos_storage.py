@@ -1,5 +1,6 @@
 import mimetypes
 import os
+from urllib.parse import urlparse
 import uuid
 
 from werkzeug.utils import secure_filename
@@ -140,6 +141,38 @@ class CosStorageService:
             "key": key,
             "media_type": media_type,
         }
+
+    def resolve_object_key(self, file_url):
+        if not file_url:
+            return None
+
+        base = urlparse(Config.COS_BASE_URL)
+        target = urlparse(str(file_url))
+        if target.scheme not in {"http", "https"}:
+            return None
+        if target.netloc != base.netloc:
+            return None
+
+        base_path = (base.path or "").rstrip("/")
+        target_path = target.path or ""
+        if base_path and not target_path.startswith(base_path + "/"):
+            return None
+
+        key = target_path[len(base_path):].lstrip("/") if base_path else target_path.lstrip("/")
+        return key or None
+
+    def get_presigned_download_url(self, file_url, expires=300):
+        key = self.resolve_object_key(file_url)
+        if not key:
+            return file_url
+
+        client = self._get_client()
+        return client.get_presigned_url(
+            Method="GET",
+            Bucket=Config.COS_BUCKET,
+            Key=key,
+            Expired=expires,
+        )
 
 
 cos_storage_service = CosStorageService()

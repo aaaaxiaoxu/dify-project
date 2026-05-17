@@ -10,6 +10,8 @@ def get_current_time():
     tz = pytz.timezone('Asia/Shanghai')
     return datetime.now(tz)
 
+BIGINT_PK = db.BigInteger().with_variant(db.Integer, 'sqlite')
+
 class User(db.Model):
     __tablename__ = 'users'
     
@@ -109,7 +111,7 @@ class WorkflowJob(db.Model):
     STATUS_SUCCEEDED = 'succeeded'
     STATUS_FAILED = 'failed'
 
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True, comment='任务ID')
+    id = db.Column(BIGINT_PK, primary_key=True, autoincrement=True, comment='任务ID')
     user_id = db.Column(db.BigInteger, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True, comment='用户ID')
     job_type = db.Column(db.String(50), nullable=False, default='report', server_default='report', index=True, comment='任务类型')
     workflow_name = db.Column(db.String(100), nullable=False, comment='工作流名称')
@@ -137,7 +139,7 @@ class ReportJob(db.Model):
     STATUS_SUCCEEDED = 'succeeded'
     STATUS_FAILED = 'failed'
 
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True, comment='报告任务ID')
+    id = db.Column(BIGINT_PK, primary_key=True, autoincrement=True, comment='报告任务ID')
     user_id = db.Column(db.BigInteger, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True, comment='用户ID')
     workflow_job_id = db.Column(db.BigInteger, db.ForeignKey('workflow_jobs.id', ondelete='SET NULL'), nullable=True, unique=True, comment='关联工作流任务ID')
     status = db.Column(db.String(20), nullable=False, default=STATUS_QUEUED, server_default=STATUS_QUEUED, index=True, comment='报告任务状态')
@@ -161,7 +163,7 @@ class ReportJob(db.Model):
 class SentimentEvalSample(db.Model):
     __tablename__ = 'sentiment_eval_samples'
 
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True, comment='样本ID')
+    id = db.Column(BIGINT_PK, primary_key=True, autoincrement=True, comment='样本ID')
     sample_key = db.Column(db.String(50), nullable=False, unique=True, comment='样本编号')
     text = db.Column(db.Text, nullable=False, comment='人工标注文本')
     expected_label = db.Column(db.String(20), nullable=False, index=True, comment='人工标注情感标签')
@@ -177,7 +179,7 @@ class ImageAccessLog(db.Model):
     DECISION_ALLOWED = 'allowed'
     DECISION_DENIED = 'denied'
 
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True, comment='访问日志ID')
+    id = db.Column(BIGINT_PK, primary_key=True, autoincrement=True, comment='访问日志ID')
     user_id = db.Column(db.BigInteger, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True, comment='访问用户ID')
     diary_id = db.Column(db.BigInteger, db.ForeignKey('diaries.id', ondelete='SET NULL'), nullable=True, index=True, comment='日记ID')
     image_id = db.Column(db.BigInteger, db.ForeignKey('diary_images.id', ondelete='SET NULL'), nullable=True, index=True, comment='图片ID')
